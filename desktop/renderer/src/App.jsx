@@ -8,7 +8,7 @@ const SHEET = {
   frameWidth: 64, frameHeight: 64,
   offsetX: 95, offsetY: 0,
 }
-const WINDOW_W = 120
+const WINDOW_W = 150
 
 // ── Animation definitions ──────────────────────────────────
 const ANIMS = {
@@ -305,24 +305,28 @@ export default function App() {
   // ── Render ───────────────────────────────────────────────
   return (
     <div className="stage">
-      <div className="speech-wrapper">
-        <div ref={bubbleRef} className="speech-bubble" />
-      </div>
-      <div ref={elRef} className="pet" style={{
-        width: SHEET.frameWidth, height: SHEET.frameHeight,
-        transform: 'translate(0px, 0px) scaleX(1)',
-        backgroundImage: `url(${SPRITE_URL})`,
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY + 6 * SHEET.frameHeight)}px`,
-        backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
-      }}
+      <div
+        ref={elRef}
+        className="pet"
+        style={{
+          position: 'relative',
+          width: SHEET.frameWidth,
+          height: SHEET.frameHeight,
+          transform: 'translate(0px, 0px) scaleX(1)',
+          backgroundImage: `url(${SPRITE_URL})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY + 6 * SHEET.frameHeight)}px`,
+          backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
+        }}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={stopDrag}
         onPointerCancel={stopDrag}
-      />
+      >
+        <div ref={bubbleRef} className="speech-bubble" />
+      </div>
       <div ref={dotRef} className="conn-dot offline" />
     </div>
   )

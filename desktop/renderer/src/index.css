@@ -34,18 +34,12 @@ body {
   cursor: grabbing;
 }
 
-/* ── Speech bubble ── */
-.speech-wrapper {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 100;
-}
+/* ── Speech bubble (inside .pet, positioned above) ── */
 .speech-bubble {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
   background: #fff;
   border: 1.5px solid #666;
   border-radius: 10px;
@@ -54,13 +48,13 @@ body {
   line-height: 1.3;
   color: #222;
   white-space: nowrap;
-  max-width: 180px;
-  position: relative;
-  margin-top: 6px;
+  max-width: 200px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   box-shadow: 0 1px 4px rgba(0,0,0,0.15);
   opacity: 0;
   transition: opacity 0.2s ease-in;
+  pointer-events: none;
+  z-index: 200;
 }
 .speech-bubble.show {
   opacity: 1;
@@ -68,7 +62,7 @@ body {
 .speech-bubble::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
   border: 6px solid transparent;
@@ -77,11 +71,12 @@ body {
 .speech-bubble::before {
   content: '';
   position: absolute;
-  bottom: -8.5px;
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
-  border: 6.5px solid transparent;
+  border: 8px solid transparent;
   border-top-color: #666;
+  margin-top: 0.5px;
 }
 
 /* ── Connection status dot ── */
