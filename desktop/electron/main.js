@@ -104,6 +104,7 @@ ipcMain.handle('pet:open-chat', async () => {
     alwaysOnTop: true,
     title: 'Pet Asistente - Chat',
     backgroundColor: '#1a1a2e',
+    webSecurity: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
