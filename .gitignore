@@ -1,0 +1,21 @@
+# Root .gitignore
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+
+# Desktop
+desktop/node_modules/
+desktop/dist/
+desktop/renderer/dist/
+
+# Backend
+backend/__pycache__/
+backend/*.pyc
+backend/.venv/
+backend/venv/
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm

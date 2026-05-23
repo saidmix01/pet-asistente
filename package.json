@@ -1,0 +1,19 @@
+{
+  "name": "pet-asistente",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop pet assistant — Electron frontend + Python backend + Ollama AI",
+  "scripts": {
+    "dev:backend": "cd backend && python main.py",
+    "dev:desktop": "cd desktop && npm run dev",
+    "dev": "concurrently -n backend,desktop \"npm run dev:backend\" \"npm run dev:desktop\"",
+    "build:renderer": "cd desktop && npm run build:renderer",
+    "build:backend": "cd backend && pyinstaller --onefile --name asistente-core main.py",
+    "build": "npm run build:renderer && npm run build:backend",
+    "pack": "npx electron-builder",
+    "start": "cd desktop && npm run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

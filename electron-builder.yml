@@ -1,0 +1,33 @@
+appId: com.saidmix.pet-asistente
+productName: Pet Asistente
+copyright: Copyright © 2026 Said Avendaño
+
+directories:
+  output: release
+  buildResources: desktop/assets
+
+extraResources:
+  - from: backend/dist/asistente-core
+    to: backend/asistente-core
+  - from: desktop/assets
+    to: assets
+
+files:
+  - desktop/electron/**/*
+  - desktop/renderer/dist/**/*
+  - desktop/assets/**/*
+  - desktop/package.json
+
+win:
+  target: portable
+  icon: desktop/assets/icon.png
+
+mac:
+  target: dmg
+  icon: desktop/assets/icon.png
+  category: public.app-category.productivity
+
+linux:
+  target: AppImage
+  icon: desktop/assets/icon.png
+  category: Utility
