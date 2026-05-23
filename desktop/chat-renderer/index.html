@@ -131,19 +131,41 @@ const inputEl = document.getElementById('input')
 const sendBtn = document.getElementById('sendBtn')
 const statusEl = document.getElementById('status')
 let loading = false
+let gConfig = { aiMode: 'local', deepseekToken: '', assistantName: 'Pet' }
 
-// Check Ollama status
+// Load config from Electron
+async function loadConfig() {
+  try {
+    if (window.pet?.getConfig) {
+      const cfg = await window.pet.getConfig()
+      if (cfg) gConfig = cfg
+    }
+  } catch {}
+  // Update header with name
+  const nameEl = document.querySelector('.header h1')
+  if (nameEl) nameEl.textContent = gConfig.assistantName || 'Pet Asistente'
+}
+
+// Check AI status
 async function checkStatus() {
   try {
     const r = await fetch('http://127.0.0.1:8000/ai/status')
     const d = await r.json()
-    statusEl.textContent = d.available ? '🟢 Conectado a Ollama' : '🔴 Ollama no disponible'
-    statusEl.style.color = d.available ? '#4caf50' : '#ff5252'
+    const mode = gConfig.aiMode || 'local'
+    if (mode === 'local') {
+      statusEl.textContent = d.ollama_available ? '🟢 Ollama conectado' : '🔴 Ollama no disponible'
+      statusEl.style.color = d.ollama_available ? '#4caf50' : '#ff5252'
+    } else {
+      statusEl.textContent = gConfig.deepseekToken ? '🟢 DeepSeek configurado' : '🟡 DeepSeek: falta token'
+      statusEl.style.color = gConfig.deepseekToken ? '#4caf50' : '#ffc107'
+    }
   } catch {
     statusEl.textContent = '🔴 Backend no disponible'
     statusEl.style.color = '#ff5252'
   }
 }
+
+loadConfig()
 checkStatus()
 setInterval(checkStatus, 10000)
 
@@ -178,7 +200,11 @@ async function sendMessage() {
     const r = await fetch('http://127.0.0.1:8000/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ 
+        message: text,
+        mode: gConfig.aiMode || 'local',
+        api_token: gConfig.deepseekToken || '',
+      }),
     })
     const d = await r.json()
     typing.remove()

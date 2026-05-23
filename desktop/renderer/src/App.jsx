@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const api = typeof window !== 'undefined' ? window.pet : null
 
@@ -33,13 +33,13 @@ const STATE_DURATIONS = {
   sniffwalk:[1500, 4000],
 }
 
-// Normal state: only quiet idle animations
 const DEFAULT_STATES = ['idle', 'idle2']
 
 // ── WebSocket config ───────────────────────────────────────
 const WS_URL = 'ws://127.0.0.1:8000/ws/state'
 const RECONNECT_MS = 3000
 const OLLAMA_CHAT = 'http://127.0.0.1:11434/api/chat'
+const BACKEND_CHAT = 'http://127.0.0.1:8000/ai/chat'
 
 // ── Animaciones periódicas según modo activo ─────────────
 const MODE_ANIMS = {
@@ -80,40 +80,45 @@ const EVENT_SPEECH = {
     }
     return pick(map[t]) || null
   },
-  'activity.switch': () => null, // quiet on switches
-  'activity.idle': () => null,   // quiet when idle
+  'activity.switch': () => null,
+  'activity.idle': () => null,
 }
 
-// ── AI pet thoughts via Ollama ─────────────────────────────
+// ── AI pet thoughts via backend ────────────────────────────
+let gConfig = { aiMode: 'local', deepseekToken: '', assistantName: 'Pet' }
 let ollamaAvailable = false
+
+async function loadConfig() {
+  if (api?.getConfig) {
+    const cfg = await api.getConfig()
+    if (cfg) gConfig = cfg
+  }
+}
 
 async function checkOllama() {
   try {
     const r = await fetch('http://127.0.0.1:8000/ai/status')
-    ollamaAvailable = (await r.json()).available
+    const data = await r.json()
+    ollamaAvailable = data.ollama_available
     return ollamaAvailable
   } catch { return false }
 }
 
 async function generateThought(activityType) {
-  if (!ollamaAvailable) return null
+  if (!ollamaAvailable && gConfig.aiMode !== 'remote') return null
   try {
-    const prompt = `Eres una mascota virtual. Genera UNA frase corta (máximo 8 palabras) viendo a tu humano que está ${activityType || 'trabajando'}. Responde solo la frase, sin formato.`
-    const r = await fetch(OLLAMA_CHAT, {
+    const r = await fetch(BACKEND_CHAT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-r1:8b',
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-        options: { num_predict: 25, temperature: 0.8 },
+        message: `¿Qué opinas de que estoy ${activityType || 'trabajando'}?`,
+        mode: gConfig.aiMode,
+        api_token: gConfig.deepseekToken,
       }),
     })
     if (!r.ok) return null
     const d = await r.json()
-    const text = d?.message?.content?.trim() || null
-    if (!text) return null
-    return text.replace(/<\/?think>/gi, '').replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 60)
+    return d.response?.trim()?.slice(0, 60) || null
   } catch { return null }
 }
 
@@ -124,13 +129,12 @@ async function checkOverdueTasks() {
     if (!r.ok) return []
     const data = await r.json()
     const tasks = data.tasks || []
-    const overdue = tasks.filter(t => {
+    const now = Date.now()
+    return tasks.filter(t => {
       if (!t.due_date) return false
-      const now = Date.now()
       const due = parseInt(t.due_date)
       return due < now && t.status?.toLowerCase() !== 'done' && t.status?.toLowerCase() !== 'closed'
     })
-    return overdue
   } catch { return [] }
 }
 
@@ -143,11 +147,109 @@ function pickDefault(current) {
 
 let gFallbackX = 0
 
+// ── Config Modal Component ──────────────────────────────────
+function ConfigModal({ onClose }) {
+  const [name, setName] = useState(gConfig.assistantName || 'Pet')
+  const [mode, setMode] = useState(gConfig.aiMode || 'local')
+  const [token, setToken] = useState(gConfig.deepseekToken || '')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    const cfg = {
+      assistantName: name || 'Pet',
+      aiMode: mode,
+      deepseekToken: token,
+      firstLaunch: false,
+    }
+    gConfig = cfg
+    if (api?.saveConfig) {
+      await api.saveConfig(cfg)
+    }
+    if (api?.markConfigured) {
+      await api.markConfigured()
+    }
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div className="config-overlay">
+      <div className="config-modal">
+        <h2>🐾 Configuración Inicial</h2>
+        <p className="config-subtitle">Personalizá tu asistente virtual</p>
+
+        <div className="config-field">
+          <label>Nombre del asistente</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ej: Pet, Jarvis, Mascota..."
+            maxLength={20}
+          />
+        </div>
+
+        <div className="config-field">
+          <label>Modo de IA</label>
+          <div className="config-radio-group">
+            <label className={`config-radio ${mode === 'local' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="aiMode"
+                value="local"
+                checked={mode === 'local'}
+                onChange={() => setMode('local')}
+              />
+              <span className="config-radio-label">🖥️ Local (Ollama)</span>
+              <span className="config-radio-desc">Más privado, requiere Ollama instalado</span>
+            </label>
+            <label className={`config-radio ${mode === 'remote' ? 'active' : ''}`}>
+              <input
+                type="radio"
+                name="aiMode"
+                value="remote"
+                checked={mode === 'remote'}
+                onChange={() => setMode('remote')}
+              />
+              <span className="config-radio-label">☁️ Remoto (DeepSeek)</span>
+              <span className="config-radio-desc">No necesita Ollama, requiere token</span>
+            </label>
+          </div>
+        </div>
+
+        {mode === 'remote' && (
+          <div className="config-field">
+            <label>Token de DeepSeek</label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="sk-..."
+            />
+            <span className="config-field-hint">
+              Obtenelo en platform.deepseek.com
+            </span>
+          </div>
+        )}
+
+        <button
+          className="config-save-btn"
+          onClick={handleSave}
+          disabled={saving || (mode === 'remote' && !token)}
+        >
+          {saving ? 'Guardando...' : '✨ ¡Comenzar!'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main App ───────────────────────────────────────────────
 export default function App() {
+  const [showConfig, setShowConfig] = useState(false)
   const elRef    = useRef(null)
   const bubbleRef = useRef(null)
-
-  // ── Refs (game-loop state) ───────────────────────────────
   const stateRef    = useRef('idle')
   const dirRef      = useRef(1)
   const frameRef    = useRef(0)
@@ -158,7 +260,6 @@ export default function App() {
   const lastPtrRef  = useRef({ x: 0, y: 0 })
   const readyRef    = useRef(false)
 
-  // ── Apply visual state to DOM ────────────────────────────
   const applyVisual = () => {
     const el = elRef.current
     if (!el) return
@@ -171,15 +272,23 @@ export default function App() {
       `${-(SHEET.offsetY + anim.row * SHEET.frameHeight)}px`
     el.style.transform =
       `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
-
-    // Counter-flip speech bubble + keep centered
     const bubble = bubbleRef.current
     if (bubble) {
       bubble.style.transform = `translateX(-50%) scaleX(${mirrored ? -1 : 1})`
     }
   }
 
-  // ── Game loop + WebSocket ────────────────────────────────
+  // ── Check first launch ──────────────────────────────────
+  useEffect(() => {
+    ;(async () => {
+      await loadConfig()
+      const firstLaunch = api?.isFirstLaunch ? await api.isFirstLaunch() : false
+      if (firstLaunch) {
+        setShowConfig(true)
+      }
+    })()
+  }, [])
+
   useEffect(() => {
     let rafId = null
     let lastTime = 0
@@ -191,7 +300,7 @@ export default function App() {
     let lastOverdueNotified = new Set()
     let speechTimer = null
     let lastReactedType = ''
-    let modeAnimTimer = 30000 // primera animación modo a los 30s
+    let modeAnimTimer = 30000
 
     const showSpeech = (text, duration = 4000) => {
       if (!text) return
@@ -212,11 +321,10 @@ export default function App() {
     }
 
     const setConnDot = (online) => {
-      if (online) showSpeech('Conectado 🟢', 2000)
-      else showSpeech('Desconectado 🔴', 4000)
+      if (online) showSpeech(`${gConfig.assistantName} conectado 🟢`, 2000)
+      else showSpeech(`${gConfig.assistantName} desconectado 🔴`, 4000)
     }
 
-    // Click handler (needs closure access to showSpeech + generateThought)
     petClickRef.current = () => {
       if (wasDraggedRef.current) return
       if (!api?.openChat) {
@@ -242,19 +350,15 @@ export default function App() {
             const ev = msg.data.event
             const data = msg.data.data
             if (data?.activity_type) lastKnownActivity = data.activity_type
-
-            // activity.switch o activity.update: reacciona SOLO si cambió el tipo
-            // Así no spammea mientras estás en lo mismo por horas
             const currentType = data?.activity_type || ''
             const isTypeChange = currentType && currentType !== lastReactedType
 
             if (ev === 'activity.switch' && isTypeChange) {
               lastReactedType = currentType
-              const reaction = getReaction(ev, data)
               const speech = EVENT_SPEECH['activity.update']?.(data)
+              const reaction = getReaction(ev, data)
               if (reaction) forceAnim(reaction.state, reaction.duration, speech)
             }
-
             if (ev === 'activity.update' && isTypeChange) {
               lastReactedType = currentType
               const reaction = getReaction(ev, data)
@@ -262,12 +366,11 @@ export default function App() {
               if (reaction) forceAnim(reaction.state, reaction.duration, speech)
             }
           }
-        } catch { /* malformed msg */ }
+        } catch {}
       }
       ws.onclose = () => { setConnDot(false); reconnectTimer = setTimeout(connectWs, RECONNECT_MS) }
       ws.onerror = () => { ws?.close() }
     }
-    connectWs()
 
     // ── Init ───────────────────────────────────────────────
     ;(async () => {
@@ -283,8 +386,10 @@ export default function App() {
       readyRef.current = true
       lastTime = performance.now()
       applyVisual()
-      showSpeech('🐾', 2500)
+      showSpeech(`👋 Soy ${gConfig.assistantName}`, 2500)
     })()
+
+    connectWs()
 
     // ── Game loop ──────────────────────────────────────────
     const loop = (now) => {
@@ -294,8 +399,6 @@ export default function App() {
 
       if (!draggingRef.current) {
         const anim = ANIMS[stateRef.current]
-
-        // Animation frame advance
         frameAccum += dt
         while (frameAccum >= anim.msPerFrame) {
           frameAccum -= anim.msPerFrame
@@ -303,7 +406,6 @@ export default function App() {
           frameRef.current = (frameRef.current + step + anim.frames) % anim.frames
         }
 
-        // Movement (only for moving states triggered by events)
         if (anim.speed > 0) {
           const dx = anim.speed * dirRef.current
           let nx = posRef.current.x + dx
@@ -315,7 +417,6 @@ export default function App() {
           else { gFallbackX += dx }
         }
 
-        // State transitions (always back to idle)
         stateTimer -= dt
         if (stateTimer <= 0) {
           const next = pickDefault(stateRef.current)
@@ -327,21 +428,18 @@ export default function App() {
           frameRef.current = frameRef.current % nextAnim.frames
         }
 
-        // ── Animaciones periódicas según modo ──────────────
         modeAnimTimer -= dt
         if (modeAnimTimer <= 0 && lastReactedType) {
           const pool = MODE_ANIMS[lastReactedType]
           if (pool) {
-            const anim = pool[Math.floor(Math.random() * pool.length)]
-            forceAnim(anim.state, anim.duration, null)
+            const a = pool[Math.floor(Math.random() * pool.length)]
+            forceAnim(a.state, a.duration, null)
           }
-          // reset timer: 20-50s
           modeAnimTimer = 20000 + Math.random() * 30000
         }
 
-        // ── Periodic checks ────────────────────────────────
         aiThoughtInterval += dt
-        if (aiThoughtInterval > 180000 && ollamaAvailable) { // every 3 min
+        if (aiThoughtInterval > 180000) {
           aiThoughtInterval = 0
           generateThought(lastKnownActivity).then(thought => {
             if (thought) showSpeech(thought, 5000)
@@ -349,7 +447,7 @@ export default function App() {
         }
 
         overdueCheckInterval += dt
-        if (overdueCheckInterval > 60000) { // every 60s
+        if (overdueCheckInterval > 60000) {
           overdueCheckInterval = 0
           checkOverdueTasks().then(tasks => {
             const newOverdue = tasks.filter(t => !lastOverdueNotified.has(t.id))
@@ -376,7 +474,6 @@ export default function App() {
     }
   }, [])
 
-  // ── Drag / interact handlers ────────────────────────────
   const setInteractive = (val) => { if (!api?.setInteractive) return; api.setInteractive(val).catch(() => {}) }
   const moveWindowBy = (dx, dy) => {
     if (api?.moveBy) { api.moveBy(dx, dy).catch(() => {}); return }
@@ -409,34 +506,34 @@ export default function App() {
     if (!hoveredRef.current) setInteractive(false)
   }
 
-  // petClickRef.current se asigna dentro del useEffect para tener acceso a showSpeech
-
-  // ── Render ───────────────────────────────────────────────
   return (
-    <div className="stage">
-      <div
-        ref={elRef}
-        className="pet"
-        style={{
-          position: 'relative',
-          width: SHEET.frameWidth, height: SHEET.frameHeight,
-          transform: 'translate(0px, 0px) scaleX(1)',
-          backgroundImage: `url(${SPRITE_URL})`,
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY)}px`,
-          backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
-        }}
-        onPointerEnter={onPointerEnter}
-        onPointerLeave={onPointerLeave}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={stopDrag}
-        onPointerCancel={stopDrag}
-        onClick={(e) => petClickRef.current?.(e)}
-      >
-        <div ref={bubbleRef} className="speech-bubble" />
+    <>
+      {showConfig && <ConfigModal onClose={() => setShowConfig(false)} />}
+      <div className="stage">
+        <div
+          ref={elRef}
+          className="pet"
+          style={{
+            position: 'relative',
+            width: SHEET.frameWidth, height: SHEET.frameHeight,
+            transform: 'translate(0px, 0px) scaleX(1)',
+            backgroundImage: `url(${SPRITE_URL})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY)}px`,
+            backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
+          }}
+          onPointerEnter={onPointerEnter}
+          onPointerLeave={onPointerLeave}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={stopDrag}
+          onPointerCancel={stopDrag}
+          onClick={(e) => petClickRef.current?.(e)}
+        >
+          <div ref={bubbleRef} className="speech-bubble" />
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
