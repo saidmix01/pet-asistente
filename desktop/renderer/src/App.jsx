@@ -190,6 +190,20 @@ export default function App() {
       else showSpeech('Desconectado 🔴', 4000)
     }
 
+    // Click handler (needs closure access to showSpeech + generateThought)
+    petClickRef.current = () => {
+      if (wasDraggedRef.current) return
+      if (!ollamaAvailable) {
+        showSpeech('Ollama no disponible 😴', 3000)
+        return
+      }
+      showSpeech('Pensando... 🤔', 2000)
+      generateThought(lastKnownActivity || 'trabajando').then(t => {
+        if (t) showSpeech(t, 5000)
+        else showSpeech('... no se me ocurre nada 😅', 3000)
+      })
+    }
+
     // ── WebSocket ──────────────────────────────────────────
     let ws = null
     let reconnectTimer = null
@@ -325,6 +339,7 @@ export default function App() {
   const onPointerEnter = () => { hoveredRef.current = true; setInteractive(true) }
   const onPointerLeave = () => { if (!draggingRef.current) setInteractive(false) }
   const wasDraggedRef = useRef(false)
+  const petClickRef = useRef(null)
 
   const onPointerDown = (e) => {
     if (e.button !== 0) return
@@ -348,18 +363,7 @@ export default function App() {
     if (!hoveredRef.current) setInteractive(false)
   }
 
-  const onPetClick = () => {
-    if (wasDraggedRef.current) return
-    if (!ollamaAvailable) {
-      showSpeech('Ollama no disponible 😴', 3000)
-      return
-    }
-    showSpeech('Pensando... 🤔', 2000)
-    generateThought(lastKnownActivity || 'trabajando').then(t => {
-      if (t) showSpeech(t, 5000)
-      else showSpeech('... no se me ocurre nada 😅', 3000)
-    })
-  }
+  // petClickRef.current se asigna dentro del useEffect para tener acceso a showSpeech
 
   // ── Render ───────────────────────────────────────────────
   return (
@@ -382,7 +386,7 @@ export default function App() {
         onPointerMove={onPointerMove}
         onPointerUp={stopDrag}
         onPointerCancel={stopDrag}
-        onClick={onPetClick}
+        onClick={(e) => petClickRef.current?.(e)}
       >
         <div ref={bubbleRef} className="speech-bubble" />
       </div>
