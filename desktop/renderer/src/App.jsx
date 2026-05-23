@@ -223,19 +223,16 @@ export default function App() {
         showSpeech('Ollama no disponible 😴', 3000)
         return
       }
-      const message = prompt('💬 Dile algo a tu mascota:')
-      if (!message || !message.trim()) {
-        showSpeech('🐾', 2000)
-        return
-      }
-      showSpeech('Pensando... 🤔', 10000)
+      // Click simple: saludo automático
+      const message = '¡Hola! ¿Cómo estás?'
+      showSpeech('🤔...', 6000)
       fetch('http://127.0.0.1:8000/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
       }).then(r => r.json()).then(d => {
         const text = (d?.response || '').trim()
-        showSpeech(text || '... 😶', 6000)
+        showSpeech(text || '🐾', 5000)
       }).catch(() => {
         showSpeech('No pude pensar 😅', 3000)
       })
