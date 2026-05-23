@@ -135,10 +135,10 @@ export default function App() {
     el.style.transform =
       `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
 
-    // Counter-flip speech bubble so text stays readable
+    // Counter-flip speech bubble so text stays readable + keep centered
     const bubble = bubbleRef.current
     if (bubble) {
-      bubble.style.transform = `scaleX(${mirrored ? -1 : 1})`
+      bubble.style.transform = `translateX(-50%) scaleX(${mirrored ? -1 : 1})`
     }
   }
 
