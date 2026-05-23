@@ -5,6 +5,7 @@ FastAPI server factory — creates the Uvicorn server instance.
 import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router as main_router
 from integrations.clickup_routes import router as clickup_router
 from integrations.report_routes import router as report_router
@@ -61,6 +62,19 @@ def create_app(
     # Inject ClickUp service
     import integrations.clickup_routes as cu_routes
     cu_routes.clickup_service = ClickUpService()
+
+    # CORS: permitir peticiones desde Vite dev server o Electron renderer
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "file://",  # Electron loads from file:// in production
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app.include_router(main_router)
     app.include_router(clickup_router)
