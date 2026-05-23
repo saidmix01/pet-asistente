@@ -223,10 +223,21 @@ export default function App() {
         showSpeech('Ollama no disponible 😴', 3000)
         return
       }
-      showSpeech('Pensando... 🤔', 2000)
-      generateThought(lastKnownActivity || 'trabajando').then(t => {
-        if (t) showSpeech(t, 5000)
-        else showSpeech('... no se me ocurre nada 😅', 3000)
+      const message = prompt('💬 Dile algo a tu mascota:')
+      if (!message || !message.trim()) {
+        showSpeech('🐾', 2000)
+        return
+      }
+      showSpeech('Pensando... 🤔', 10000)
+      fetch('http://127.0.0.1:8000/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      }).then(r => r.json()).then(d => {
+        const text = (d?.response || '').trim()
+        showSpeech(text || '... 😶', 6000)
+      }).catch(() => {
+        showSpeech('No pude pensar 😅', 3000)
       })
     }
 

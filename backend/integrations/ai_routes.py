@@ -2,8 +2,10 @@
 AI Report routes — endpoints to generate AI-enhanced reports via Ollama.
 """
 
+import json
 from datetime import date
 
+import urllib.request
 from fastapi import APIRouter, HTTPException, Query
 
 from integrations.daily_log import get_logs_by_date, generate_report as generate_text_report
@@ -75,6 +77,39 @@ async def ai_enhanced_report(date_str: str | None = Query(None, alias="date")):
         "enhanced": enhanced,
         "model": "deepseek-r1:8b",
     }
+
+
+@router.post("/chat")
+async def pet_chat(message: dict):
+    """Proxy para que el pet pueda chatear con Ollama sin CORS."""
+    if not is_available():
+        raise HTTPException(503, "Ollama no está disponible")
+    user_msg = message.get("message", "").strip()
+    if not user_msg:
+        raise HTTPException(400, "Mensaje vacío")
+    try:
+        payload = {
+            "model": "deepseek-r1:8b",
+            "messages": [
+                {"role": "system", "content": "Eres una mascota virtual graciosa, amigable. Respondes con frases cortas de máximo 15 palabras. Hablas en español."},
+                {"role": "user", "content": user_msg},
+            ],
+            "stream": False,
+            "options": {"num_predict": 50},
+        }
+        req = urllib.request.Request(
+            "http://localhost:11434/api/chat",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+            text = (data.get("message", {}) or {}).get("content", "").strip()
+            clean = text.replace("</think>", "").replace("<think>", "").strip()[:100]
+            return {"response": clean}
+    except Exception as e:
+        raise HTTPException(500, f"Chat failed: {e}")
 
 
 @router.get("/summarize")
