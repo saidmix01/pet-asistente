@@ -18,7 +18,7 @@ from services.logger import info
 
 
 def main() -> None:
-    info("=== Work Assistant Core v1.0 starting ===")
+    info("=== Work Assistant Core v1.2 starting ===")
 
     # Database
     init_db()
@@ -34,6 +34,14 @@ def main() -> None:
     # Time tracking tables
     from integrations.time_tracker import init_time_tracking_tables
     init_time_tracking_tables()
+
+    # Chat history tables
+    from integrations.chat_history import init_chat_tables
+    init_chat_tables()
+
+    # Pomodoro tables
+    from integrations.pomodoro import init_pomodoro_tables
+    init_pomodoro_tables()
 
     # Event system
     bus = EventBus()
@@ -90,9 +98,9 @@ def main() -> None:
     import integrations.ai_routes as ai_routes_module
     ai_routes_module.time_tracker = time_tracker
 
-    # Webhook handler available (for ClickUp webhook config if needed)
-    # import integrations.clickup_webhooks as cw_routes
-    # cw_routes.task_tracker = task_tracker
+    # Inject into chat routes
+    import integrations.chat_routes as chat_routes_module
+    chat_routes_module.time_tracker = time_tracker
 
     app = create_app(state=state, stream=stream)
 
@@ -104,12 +112,14 @@ def main() -> None:
     hb_thread = threading.Thread(target=run_async_loop, daemon=True)
     hb_thread.start()
 
-    info("Work Assistant Core v1.0 running on http://127.0.0.1:8000")
+    info("Work Assistant Core v1.2 running on http://127.0.0.1:8000")
     info("WebSocket endpoint: ws://127.0.0.1:8000/ws/state")
     info("ClickUp integration ready")
     info("Real activity monitoring active (macOS)")
     info("Task Tracker active (polling ClickUp every 60s)")
     info("Time Tracker active (measuring hours per task)")
+    info("Chat history enabled (persistent conversations)")
+    info("Pomodoro timer ready")
     info("Auto Report will generate at 4:00 PM")
 
     uvicorn.run(

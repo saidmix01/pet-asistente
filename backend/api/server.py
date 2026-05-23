@@ -8,11 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router as main_router
 from integrations.clickup_routes import router as clickup_router
+from integrations.due_soon import router as due_soon_router
 from integrations.report_routes import router as report_router
 from integrations.auto_report_routes import router as auto_report_router
 from integrations.ai_routes import router as ai_router
+from integrations.chat_routes import router as chat_router
+from integrations.pomodoro import router as pomodoro_router
 from integrations.clickup_service import ClickUpService
-from integrations.clickup_config import load_token
 from core.system_state import SystemState
 from core.event_stream import EventStream
 from services.logger import info
@@ -20,7 +22,7 @@ from services.logger import info
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Auto-sync ClickUp on startup in background thread (no bloquea)."""
+    """Auto-sync ClickUp on startup in background thread."""
     import integrations.clickup_routes as cu_routes
     svc = cu_routes.clickup_service
     if svc and svc.is_connected():
@@ -32,12 +34,11 @@ async def lifespan(app: FastAPI):
 
 
 def _do_sync(svc):
-    """Ejecuta sync_all en thread separado (bloquea el thread, no el event loop)."""
     try:
         result = svc.sync_all(days_back=7)
-        info(f"ClickUp sync complete: {result.get('tasks_synced', 0)} tasks, {result.get('lists', 0)} lists")
+        info(f"ClickUp sync complete: {result.get('tasks_synced', 0)} tasks")
     except Exception as e:
-        info(f"ClickUp auto-sync failed (will retry on demand): {e}")
+        info(f"ClickUp auto-sync failed: {e}")
 
 
 def create_app(
@@ -46,30 +47,31 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(
         title="Work Assistant Core",
-        version="1.1.0",
+        version="1.2.0",
         description="Local backend for monitoring, simulating and recording user activity.",
         lifespan=lifespan,
     )
 
-    # Inject dependencies into routes modules
     import api.routes as routes
-
     if state is not None:
         routes.system_state = state
     if stream is not None:
         routes.event_stream = stream
 
-    # Inject ClickUp service
     import integrations.clickup_routes as cu_routes
     cu_routes.clickup_service = ClickUpService()
 
-    # CORS: permitir peticiones desde Vite dev server o Electron renderer
+    # Inject time_tracker into chat routes
+    import integrations.chat_routes as chat_routes_module
+    import integrations.ai_routes as ai_routes_module
+    # These will be set from main.py
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            "null",  # Electron file:// sends Origin: null
+            "null",
         ],
         allow_credentials=True,
         allow_methods=["*"],
@@ -78,7 +80,10 @@ def create_app(
 
     app.include_router(main_router)
     app.include_router(clickup_router)
+    app.include_router(due_soon_router)
     app.include_router(report_router)
     app.include_router(auto_report_router)
     app.include_router(ai_router)
+    app.include_router(chat_router)
+    app.include_router(pomodoro_router)
     return app
