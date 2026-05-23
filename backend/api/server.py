@@ -2,6 +2,7 @@
 FastAPI server factory — creates the Uvicorn server instance.
 """
 
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from api.routes import router as main_router
@@ -18,19 +19,24 @@ from services.logger import info
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Auto-sync ClickUp on startup if token is configured."""
+    """Auto-sync ClickUp on startup in background thread (no bloquea)."""
     import integrations.clickup_routes as cu_routes
     svc = cu_routes.clickup_service
     if svc and svc.is_connected():
-        info("ClickUp token found — auto-syncing...")
-        try:
-            result = svc.sync_all(days_back=7)
-            info(f"ClickUp sync complete: {result.get('tasks_synced', 0)} tasks, {result.get('lists', 0)} lists")
-        except Exception as e:
-            info(f"ClickUp auto-sync failed (will retry on demand): {e}")
+        info("ClickUp token found — auto-syncing in background...")
+        threading.Thread(target=_do_sync, args=(svc,), daemon=True).start()
     else:
         info("ClickUp not configured — skipping auto-sync")
     yield
+
+
+def _do_sync(svc):
+    """Ejecuta sync_all en thread separado (bloquea el thread, no el event loop)."""
+    try:
+        result = svc.sync_all(days_back=7)
+        info(f"ClickUp sync complete: {result.get('tasks_synced', 0)} tasks, {result.get('lists', 0)} lists")
+    except Exception as e:
+        info(f"ClickUp auto-sync failed (will retry on demand): {e}")
 
 
 def create_app(

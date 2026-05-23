@@ -56,11 +56,12 @@ async def disconnect():
 
 @router.post("/sync")
 async def sync():
-    """Full sync: teams → spaces → folders → lists → tasks."""
+    """Full sync: teams → spaces → folders → lists → tasks (en thread separado)."""
+    import asyncio
     if clickup_service is None:
         raise HTTPException(500, "Service not initialized")
     try:
-        result = clickup_service.sync_all()
+        result = await asyncio.to_thread(clickup_service.sync_all)
         return {"message": "Sync completed", **result}
     except RuntimeError as e:
         raise HTTPException(400, str(e))
