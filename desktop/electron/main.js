@@ -1,15 +1,31 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { spawn } = require('child_process')
+const http = require('http')
 
 let mainWindow = null
 let chatWindow = null
+let backendProcess = null
 
-// ── Config file ──────────────────────────────────────────────
+// ── Paths ──────────────────────────────────────────────────
+const isDev = !!process.env.VITE_DEV_SERVER_URL || !app.isPackaged
+
+function getBackendPath() {
+  if (isDev) {
+    // Dev: use Python directly
+    return null
+  }
+  // Prod: use compiled binary
+  const resourcePath = process.resourcesPath
+  return path.join(resourcePath, 'backend', 'asistente-core')
+}
+
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'pet-config.json')
 }
 
+// ── Config ──────────────────────────────────────────────────
 function loadConfig() {
   try {
     const p = getConfigPath()
@@ -25,7 +41,6 @@ function saveConfig(config) {
   fs.writeFileSync(p, JSON.stringify(config, null, 2), 'utf-8')
 }
 
-// ── Default config ───────────────────────────────────────────
 function getDefaultConfig() {
   return {
     assistantName: 'Pet',
@@ -35,6 +50,96 @@ function getDefaultConfig() {
   }
 }
 
+// ── Backend lifecycle ──────────────────────────────────────
+function startBackend() {
+  return new Promise((resolve, reject) => {
+    const backendPath = getBackendPath()
+    let cmd, args
+
+    if (backendPath && fs.existsSync(backendPath)) {
+      // Production: compiled binary
+      cmd = backendPath
+      args = []
+      console.log(`[Pet] Starting backend binary: ${cmd}`)
+    } else {
+      // Dev: python3 main.py
+      const mainPy = path.join(__dirname, '..', '..', 'backend', 'main.py')
+      if (!fs.existsSync(mainPy)) {
+        console.error('[Pet] Backend not found:', mainPy)
+        reject(new Error('Backend main.py not found'))
+        return
+      }
+      cmd = 'python3'
+      args = [mainPy]
+      console.log(`[Pet] Starting backend via python3: ${mainPy}`)
+    }
+
+    backendProcess = spawn(cmd, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    })
+
+    backendProcess.stdout.on('data', (data) => {
+      console.log(`[Backend] ${data.toString().trim()}`)
+    })
+
+    backendProcess.stderr.on('data', (data) => {
+      console.log(`[Backend] ${data.toString().trim()}`)
+    })
+
+    backendProcess.on('error', (err) => {
+      console.error('[Pet] Backend process error:', err.message)
+      reject(err)
+    })
+
+    backendProcess.on('exit', (code) => {
+      console.log(`[Pet] Backend exited with code ${code}`)
+      backendProcess = null
+    })
+
+    // Wait for backend to be ready (poll port 8000)
+    const maxRetries = 30
+    let retries = 0
+    const poll = () => {
+      retries++
+      const req = http.get('http://127.0.0.1:8000/', (res) => {
+        if (res.statusCode === 200) {
+          console.log('[Pet] Backend ready!')
+          resolve()
+        } else if (retries < maxRetries) {
+          setTimeout(poll, 1000)
+        } else {
+          reject(new Error('Backend did not respond with 200'))
+        }
+      })
+      req.on('error', () => {
+        if (retries < maxRetries) {
+          setTimeout(poll, 1000)
+        } else {
+          reject(new Error('Backend did not start within 30s'))
+        }
+      })
+      req.end()
+    }
+    setTimeout(poll, 2000) // first check after 2s
+  })
+}
+
+function stopBackend() {
+  if (backendProcess) {
+    console.log('[Pet] Stopping backend...')
+    backendProcess.kill('SIGTERM')
+    // Force kill after 5s
+    setTimeout(() => {
+      if (backendProcess) {
+        backendProcess.kill('SIGKILL')
+        backendProcess = null
+      }
+    }, 5000)
+  }
+}
+
+// ── Window creation ─────────────────────────────────────────
 function getRendererUrl() {
   if (process.env.VITE_DEV_SERVER_URL) return process.env.VITE_DEV_SERVER_URL
   return null
@@ -59,7 +164,6 @@ function createWindow() {
   })
 
   mainWindow.setMenuBarVisibility(false)
-
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
 
   const rendererUrl = getRendererUrl()
@@ -76,7 +180,7 @@ function createWindow() {
   })
 }
 
-// ── Config IPC handlers ──────────────────────────────────────
+// ── IPC handlers ────────────────────────────────────────────
 ipcMain.handle('pet:ping', async () => 'pong')
 
 ipcMain.handle('pet:get-config', async () => {
@@ -114,12 +218,7 @@ ipcMain.handle('pet:get-screen-size', async () => {
 
 ipcMain.handle('pet:set-interactive', async (event, payload) => {
   if (!mainWindow) return false
-  const interactive = Boolean(payload && payload.interactive)
-  if (interactive) {
-    mainWindow.setIgnoreMouseEvents(false)
-  } else {
-    mainWindow.setIgnoreMouseEvents(true, { forward: true })
-  }
+  mainWindow.setIgnoreMouseEvents(!(payload && payload.interactive))
   return true
 })
 
@@ -129,10 +228,8 @@ ipcMain.handle('pet:move-by', async (event, payload) => {
   const dy = Number(payload && payload.dy)
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null
   const [x, y] = mainWindow.getPosition()
-  const nextX = Math.round(x + dx)
-  const nextY = Math.round(y + dy)
-  mainWindow.setPosition(nextX, nextY, false)
-  return [nextX, nextY]
+  mainWindow.setPosition(Math.round(x + dx), Math.round(y + dy), false)
+  return true
 })
 
 // ── Chat window ────────────────────────────────────────────
@@ -160,13 +257,29 @@ ipcMain.handle('pet:open-chat', async () => {
   chatWindow.on('closed', () => { chatWindow = null })
 })
 
-app.whenReady().then(() => {
+// ── App lifecycle ───────────────────────────────────────────
+app.whenReady().then(async () => {
+  try {
+    console.log('[Pet] Starting backend...')
+    await startBackend()
+    console.log('[Pet] Backend is ready, creating window...')
+  } catch (err) {
+    console.error('[Pet] Failed to start backend:', err.message)
+    // Fallback: show error but still open window
+  }
+
   createWindow()
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
 app.on('window-all-closed', () => {
+  stopBackend()
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  stopBackend()
 })

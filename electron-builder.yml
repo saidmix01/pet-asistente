@@ -7,27 +7,43 @@ directories:
   buildResources: desktop/assets
 
 extraResources:
-  - from: backend/dist/asistente-core
-    to: backend/asistente-core
+  - from: backend/dist/
+    to: backend/
+    filter:
+      - "**/*"
+
   - from: desktop/assets
     to: assets
 
 files:
   - desktop/electron/**/*
   - desktop/renderer/dist/**/*
+  - desktop/chat-renderer/**/*
   - desktop/assets/**/*
   - desktop/package.json
 
+# ── Windows ────────────────────────────────────────────────
 win:
-  target: portable
+  target:
+    - portable  # .exe portátil (no necesita instalación)
+    - nsis      # instalador
   icon: desktop/assets/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
+# ── macOS ─────────────────────────────────────────────────
 mac:
-  target: dmg
+  target:
+    - dmg
+    - zip
   icon: desktop/assets/icon.png
   category: public.app-category.productivity
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
+# ── Linux ─────────────────────────────────────────────────
 linux:
-  target: AppImage
+  target:
+    - AppImage
+    - deb
   icon: desktop/assets/icon.png
   category: Utility
+  artifactName: ${productName}-${version}-${arch}.${ext}
