@@ -9,7 +9,7 @@ from typing import Any
 from services.logger import info, warning, error
 
 OLLAMA_BASE = "http://localhost:11434"
-DEFAULT_MODEL = "deepseek-r1:8b"
+DEFAULT_MODEL = "deepseek-r1:1.5b"
 
 
 def is_available() -> bool:

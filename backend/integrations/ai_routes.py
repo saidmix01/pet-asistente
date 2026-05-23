@@ -38,7 +38,7 @@ async def ai_enhanced_report(date_str: str | None = Query(None, alias="date")):
     Then processes through Ollama for a clean format.
     """
     if not is_available():
-        raise HTTPException(503, "Ollama no está disponible. Instalá Ollama y descargá deepseek-r1:8b")
+        raise HTTPException(503, "Ollama no está disponible. Instalá Ollama y descargá deepseek-r1:1.5b")
 
     today = date.today().isoformat()
     report_date = date_str or today
@@ -75,7 +75,7 @@ async def ai_enhanced_report(date_str: str | None = Query(None, alias="date")):
     return {
         "date": report_date,
         "enhanced": enhanced,
-        "model": "deepseek-r1:8b",
+        "model": "deepseek-r1:1.5b",
     }
 
 
@@ -89,7 +89,7 @@ async def pet_chat(message: dict):
         raise HTTPException(400, "Mensaje vacío")
     try:
         payload = {
-            "model": "deepseek-r1:8b",
+            "model": "deepseek-r1:1.5b",
             "messages": [
                 {"role": "system", "content": "Eres una mascota virtual graciosa, amigable. Respondes con frases cortas de máximo 15 palabras. Hablas en español."},
                 {"role": "user", "content": user_msg},
