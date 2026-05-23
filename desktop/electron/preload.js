@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('pet', {
   moveBy: (dx, dy) => ipcRenderer.invoke('pet:move-by', { dx, dy }),
   getPosition: () => ipcRenderer.invoke('pet:get-position'),
   getScreenSize: () => ipcRenderer.invoke('pet:get-screen-size'),
+  openChat: () => ipcRenderer.invoke('pet:open-chat'),
 })

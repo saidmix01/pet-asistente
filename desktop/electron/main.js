@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 
 let mainWindow = null
+let chatWindow = null
 
 function getRendererUrl() {
   if (process.env.VITE_DEV_SERVER_URL) return process.env.VITE_DEV_SERVER_URL
@@ -90,9 +91,36 @@ ipcMain.handle('pet:move-by', async (event, payload) => {
   return [nextX, nextY]
 })
 
+// ── Chat window ────────────────────────────────────────────
+ipcMain.handle('pet:open-chat', async () => {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.focus()
+    return
+  }
+  chatWindow = new BrowserWindow({
+    width: 420,
+    height: 560,
+    resizable: false,
+    alwaysOnTop: true,
+    title: 'Pet Asistente - Chat',
+    backgroundColor: '#1a1a2e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  chatWindow.setMenuBarVisibility(false)
+
+  // En dev: Vite no sirve chat-renderer, usamos archivo directo
+  // En prod: loadFile desde el build
+  chatWindow.loadFile(path.join(__dirname, '..', 'chat-renderer', 'index.html'))
+
+  chatWindow.on('closed', () => { chatWindow = null })
+})
+
 app.whenReady().then(() => {
   createWindow()
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

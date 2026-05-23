@@ -219,23 +219,12 @@ export default function App() {
     // Click handler (needs closure access to showSpeech + generateThought)
     petClickRef.current = () => {
       if (wasDraggedRef.current) return
-      if (!ollamaAvailable) {
-        showSpeech('Ollama no disponible 😴', 3000)
+      if (!api?.openChat) {
+        showSpeech('Chat no disponible 😴', 2000)
         return
       }
-      // Click simple: saludo automático
-      const message = '¡Hola! ¿Cómo estás?'
-      showSpeech('🤔...', 6000)
-      fetch('http://127.0.0.1:8000/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      }).then(r => r.json()).then(d => {
-        const text = (d?.response || '').trim()
-        showSpeech(text || '🐾', 5000)
-      }).catch(() => {
-        showSpeech('No pude pensar 😅', 3000)
-      })
+      api.openChat().catch(() => {})
+      showSpeech('💬', 1500)
     }
 
     // ── WebSocket ──────────────────────────────────────────
