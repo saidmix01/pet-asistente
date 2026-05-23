@@ -4,7 +4,7 @@
   "private": true,
   "description": "Desktop pet assistant — Electron frontend + Python backend + Ollama AI",
   "scripts": {
-    "dev:backend": "cd backend && python main.py",
+    "dev:backend": "cd backend && .venv/bin/python3 main.py",
     "dev:desktop": "cd desktop && npm run dev",
     "dev": "concurrently -n backend,desktop \"npm run dev:backend\" \"npm run dev:desktop\"",
     "build:renderer": "cd desktop && npm run build:renderer",
