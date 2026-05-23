@@ -24,8 +24,8 @@ const ANIMS = {
 
 const STATE_DURATIONS = {
   jump:     [1000, 3000],
-  idle:     [2000, 4000],
-  idle2:    [2000, 4000],
+  idle:     [4000, 8000],
+  idle2:    [4000, 8000],
   sit:      [2000, 5000],
   walk:     [1500, 4000],
   run:      [1000, 3000],
@@ -33,7 +33,8 @@ const STATE_DURATIONS = {
   sniffwalk:[1500, 4000],
 }
 
-const STATES = Object.keys(ANIMS)
+// Normal state: only quiet idle animations
+const DEFAULT_STATES = ['idle', 'idle2']
 
 // ── WebSocket config ───────────────────────────────────────
 const WS_URL = 'ws://127.0.0.1:8000/ws/state'
@@ -47,37 +48,33 @@ const EVENT_SPEECH = {
   'activity.update': (data) => {
     const t = (data?.activity_type || '').toLowerCase()
     const map = {
-      coding:        ['Programando 💻', 'Modo código ✨', 'Escribiendo código 🚀', 'Debugueando 🐛'],
-      browsing:      ['Navegando 🌐', 'Investigando 🔍', 'Buscando info 📖'],
+      coding:        ['A programar 💻', 'Modo código ✨', 'Escribiendo código 🚀'],
+      browsing:      ['Navegando 🌐', 'Investigando 🔍'],
       reading:       ['Leyendo 📚', 'Modo lectura 🤓'],
-      communication: ['Hablando con alguien 💬', 'En llamada 📞'],
+      communication: ['En llamada 💬'],
       design:        ['Diseñando 🎨', 'Modo creativo 🎭'],
-      entertainment: ['Disfrutando 🎵', 'Momento de ocio 😎'],
-      other:         ['Trabajando en algo 👀', 'Ocupado 🔧'],
     }
-    return pick(map[t] || map.other)
+    return pick(map[t]) || null
   },
-  'activity.switch': () => pick(['Cambiando de actividad 🔄', 'A ver qué hay aquí 🤔', 'Moviéndome 🐾']),
-  'activity.idle': () => pick(['Zzz... 😴', 'Esperando... ⏳', 'Descansando 💤', 'Aburrido 🥱']),
+  'activity.switch': () => null, // quiet on switches
+  'activity.idle': () => null,   // quiet when idle
 }
 
 // ── AI pet thoughts via Ollama ─────────────────────────────
 let ollamaAvailable = false
-let lastThoughtTime = 0
 
 async function checkOllama() {
   try {
     const r = await fetch('http://127.0.0.1:8000/ai/status')
-    const d = await r.json()
-    ollamaAvailable = d.available
-    return d.available
+    ollamaAvailable = (await r.json()).available
+    return ollamaAvailable
   } catch { return false }
 }
 
 async function generateThought(activityType) {
   if (!ollamaAvailable) return null
   try {
-    const prompt = `Eres una mascota virtual que observa a su humano trabajar. Genera UNA frase corta (máximo 8 palabras) y divertida viendo que está ${activityType || 'trabajando'}. Responde solo la frase, sin comillas, sin asteriscos, sin formato.`
+    const prompt = `Eres una mascota virtual. Genera UNA frase corta (máximo 8 palabras) viendo a tu humano que está ${activityType || 'trabajando'}. Responde solo la frase, sin formato.`
     const r = await fetch(OLLAMA_CHAT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,14 +89,31 @@ async function generateThought(activityType) {
     const d = await r.json()
     const text = d?.message?.content?.trim() || null
     if (!text) return null
-    // Clean up think tags if present
     return text.replace(/<\/?think>/gi, '').replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 60)
   } catch { return null }
 }
 
+// ── Overdue tasks check ────────────────────────────────────
+async function checkOverdueTasks() {
+  try {
+    const r = await fetch('http://127.0.0.1:8000/integrations/clickup/tasks')
+    if (!r.ok) return []
+    const data = await r.json()
+    const tasks = data.tasks || []
+    const overdue = tasks.filter(t => {
+      if (!t.due_date) return false
+      const now = Date.now()
+      const due = parseInt(t.due_date)
+      return due < now && t.status?.toLowerCase() !== 'done' && t.status?.toLowerCase() !== 'closed'
+    })
+    return overdue
+  } catch { return [] }
+}
+
 function rand(min, max) { return Math.random() * (max - min) + min }
-function pickNext(current) {
-  const others = STATES.filter(s => s !== current)
+
+function pickDefault(current) {
+  const others = DEFAULT_STATES.filter(s => s !== current)
   return others[Math.floor(Math.random() * others.length)]
 }
 
@@ -111,7 +125,7 @@ export default function App() {
   const dotRef   = useRef(null)
 
   // ── Refs (game-loop state) ───────────────────────────────
-  const stateRef    = useRef('sniff')
+  const stateRef    = useRef('idle')
   const dirRef      = useRef(1)
   const frameRef    = useRef(0)
   const posRef      = useRef({ x: 0, y: 0 })
@@ -135,7 +149,7 @@ export default function App() {
     el.style.transform =
       `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
 
-    // Counter-flip speech bubble so text stays readable + keep centered
+    // Counter-flip speech bubble + keep centered
     const bubble = bubbleRef.current
     if (bubble) {
       bubble.style.transform = `translateX(-50%) scaleX(${mirrored ? -1 : 1})`
@@ -148,26 +162,35 @@ export default function App() {
     dot.className = `conn-dot ${online ? 'online' : 'offline'}`
   }
 
-  // ── Speech bubble ────────────────────────────────────────
-  let speechTimer = null
-
-  const showSpeech = (text, duration = 4000) => {
-    const el = bubbleRef.current
-    if (!el) return
-    el.textContent = text
-    el.classList.add('show')
-    if (speechTimer) clearTimeout(speechTimer)
-    speechTimer = setTimeout(() => {
-      el.classList.remove('show')
-    }, duration)
-  }
-
   // ── Game loop + WebSocket ────────────────────────────────
   useEffect(() => {
     let rafId = null
     let lastTime = 0
     let frameAccum = 0
     let stateTimer = 0
+    let lastKnownActivity = 'unknown'
+    let aiThoughtInterval = 0
+    let overdueCheckInterval = 0
+    let lastOverdueNotified = new Set()
+    let speechTimer = null
+
+    const showSpeech = (text, duration = 4000) => {
+      if (!text) return
+      const el = bubbleRef.current
+      if (!el) return
+      el.textContent = text
+      el.classList.add('show')
+      if (speechTimer) clearTimeout(speechTimer)
+      speechTimer = setTimeout(() => { el.classList.remove('show') }, duration)
+    }
+
+    const forceAnim = (state, duration, speech) => {
+      stateRef.current = state
+      stateTimer = duration
+      frameAccum = 0
+      frameRef.current = 0
+      if (speech !== undefined) showSpeech(speech)
+    }
 
     // ── WebSocket ──────────────────────────────────────────
     let ws = null
@@ -182,27 +205,15 @@ export default function App() {
           const msg = JSON.parse(e.data)
           if (msg.type === 'event' && msg.data?.event) {
             const ev = msg.data.event
-            const fn = EVENT_SPEECH[ev]
-            if (fn) {
-              showSpeech(fn(msg.data.data))
-            }
-            // Force animation reaction
-            const reaction = getReaction(ev, msg.data.data)
-            if (reaction) {
-              stateRef.current = reaction.state
-              stateTimer = reaction.duration > 0
-                ? reaction.duration
-                : rand(STATE_DURATIONS[reaction.state][0], STATE_DURATIONS[reaction.state][1])
-              frameAccum = 0
-              frameRef.current = 0
-            }
+            const data = msg.data.data
+            const reaction = getReaction(ev, data)
+            const speech = EVENT_SPEECH[ev]?.(data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            if (data?.activity_type) lastKnownActivity = data.activity_type
           }
         } catch { /* malformed msg */ }
       }
-      ws.onclose = () => {
-        setConnDot(false)
-        reconnectTimer = setTimeout(connectWs, RECONNECT_MS)
-      }
+      ws.onclose = () => { setConnDot(false); reconnectTimer = setTimeout(connectWs, RECONNECT_MS) }
       ws.onerror = () => { ws?.close() }
     }
     connectWs()
@@ -214,15 +225,14 @@ export default function App() {
         if (api?.getPosition) { const p = await api.getPosition(); posRef.current = { x: p.x ?? 0, y: p.y ?? 0 } }
         if (api?.getScreenSize) { const s = await api.getScreenSize(); screenRef.current = { w: s.width ?? 1920, h: s.height ?? 1080 } }
       } catch {}
-      // Check Ollama
       await checkOllama()
       dirRef.current = Math.random() > 0.5 ? 1 : -1
-      const d = STATE_DURATIONS[stateRef.current]
+      const d = STATE_DURATIONS['idle']
       stateTimer = rand(d[0], d[1])
       readyRef.current = true
       lastTime = performance.now()
       applyVisual()
-      showSpeech('¡Hola! 🐾', 3000)
+      showSpeech('🐾', 2500)
     })()
 
     // ── Game loop ──────────────────────────────────────────
@@ -242,7 +252,7 @@ export default function App() {
           frameRef.current = (frameRef.current + step + anim.frames) % anim.frames
         }
 
-        // Movement
+        // Movement (only for moving states triggered by events)
         if (anim.speed > 0) {
           const dx = anim.speed * dirRef.current
           let nx = posRef.current.x + dx
@@ -254,16 +264,38 @@ export default function App() {
           else { gFallbackX += dx }
         }
 
-        // State transitions
+        // State transitions (always back to idle)
         stateTimer -= dt
         if (stateTimer <= 0) {
-          const next = pickNext(stateRef.current)
+          const next = pickDefault(stateRef.current)
           const nextAnim = ANIMS[next]
           stateRef.current = next
           const d = STATE_DURATIONS[next]
           stateTimer = rand(d[0], d[1])
           frameAccum = 0
           frameRef.current = frameRef.current % nextAnim.frames
+        }
+
+        // ── Periodic checks ────────────────────────────────
+        aiThoughtInterval += dt
+        if (aiThoughtInterval > 180000 && ollamaAvailable) { // every 3 min
+          aiThoughtInterval = 0
+          generateThought(lastKnownActivity).then(thought => {
+            if (thought) showSpeech(thought, 5000)
+          })
+        }
+
+        overdueCheckInterval += dt
+        if (overdueCheckInterval > 60000) { // every 60s
+          overdueCheckInterval = 0
+          checkOverdueTasks().then(tasks => {
+            const newOverdue = tasks.filter(t => !lastOverdueNotified.has(t.id))
+            if (newOverdue.length > 0) {
+              newOverdue.forEach(t => lastOverdueNotified.add(t.id))
+              const names = newOverdue.map(t => t.name).slice(0, 2).join(', ')
+              forceAnim('jump', 2000, `¡Tarea atrasada! ${names} ⏰`)
+            }
+          })
         }
 
         applyVisual()
@@ -316,12 +348,11 @@ export default function App() {
         className="pet"
         style={{
           position: 'relative',
-          width: SHEET.frameWidth,
-          height: SHEET.frameHeight,
+          width: SHEET.frameWidth, height: SHEET.frameHeight,
           transform: 'translate(0px, 0px) scaleX(1)',
           backgroundImage: `url(${SPRITE_URL})`,
           backgroundRepeat: 'no-repeat',
-          backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY + 6 * SHEET.frameHeight)}px`,
+          backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY)}px`,
           backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
         }}
         onPointerEnter={onPointerEnter}
@@ -338,20 +369,18 @@ export default function App() {
   )
 }
 
-// ── Event → Animation reactions (kept outside component) ──
+// ── Event → Animation reactions ────────────────────────────
 function getReaction(eventType, data) {
   const t = (data?.activity_type || '').toLowerCase()
   switch (eventType) {
     case 'activity.update':
       if (t === 'coding')  return { state: 'jump',     duration: 1500 }
-      if (t === 'browsing') return { state: 'sniffwalk',duration: 2000 }
+      if (t === 'browsing') return { state: 'sniff',    duration: 1500 }
       if (t === 'reading' || t === 'design')
-                            return { state: 'sniff',    duration: 2000 }
-      return { state: 'walk', duration: 1500 }
+                            return { state: 'sniff',    duration: 1200 }
+      return null // don't react to "other"
     case 'activity.switch':
-      return { state: 'sniff', duration: 1200 }
-    case 'activity.idle':
-      return { state: 'idle', duration: 4000 }
+      return { state: 'sniff', duration: 1000 }
     default:
       return null
   }
