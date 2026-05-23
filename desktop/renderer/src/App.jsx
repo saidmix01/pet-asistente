@@ -204,10 +204,15 @@ export default function App() {
           if (msg.type === 'event' && msg.data?.event) {
             const ev = msg.data.event
             const data = msg.data.data
-            const reaction = getReaction(ev, data)
-            const speech = EVENT_SPEECH[ev]?.(data)
-            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
             if (data?.activity_type) lastKnownActivity = data.activity_type
+
+            // Solo reaccionar con animación en activity.switch (cambios reales)
+            // activity.update spamea cada 3s y sobra
+            if (ev === 'activity.switch') {
+              const reaction = getReaction(ev, data)
+              const speech = EVENT_SPEECH['activity.update']?.(data)
+              if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            }
           }
         } catch { /* malformed msg */ }
       }
