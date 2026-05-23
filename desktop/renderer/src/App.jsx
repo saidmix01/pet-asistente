@@ -166,7 +166,7 @@ export default function App() {
     let overdueCheckInterval = 0
     let lastOverdueNotified = new Set()
     let speechTimer = null
-    let updateCooldown = 0
+    let lastReactedType = ''  // solo reaccionar una vez por tipo de actividad
 
     const showSpeech = (text, duration = 4000) => {
       if (!text) return
@@ -221,20 +221,23 @@ export default function App() {
             const data = msg.data.data
             if (data?.activity_type) lastKnownActivity = data.activity_type
 
-            // activity.switch → siempre reacciona (cambio real de app)
-            if (ev === 'activity.switch') {
+            // activity.switch o activity.update: reacciona SOLO si cambió el tipo
+            // Así no spammea mientras estás en lo mismo por horas
+            const currentType = data?.activity_type || ''
+            const isTypeChange = currentType && currentType !== lastReactedType
+
+            if (ev === 'activity.switch' && isTypeChange) {
+              lastReactedType = currentType
               const reaction = getReaction(ev, data)
               const speech = EVENT_SPEECH['activity.update']?.(data)
               if (reaction) forceAnim(reaction.state, reaction.duration, speech)
-              updateCooldown = 15000
             }
 
-            // activity.update → solo si no está en cooldown (1 vez cada 15s)
-            if (ev === 'activity.update' && updateCooldown <= 0) {
+            if (ev === 'activity.update' && isTypeChange) {
+              lastReactedType = currentType
               const reaction = getReaction(ev, data)
               const speech = EVENT_SPEECH[ev]?.(data)
               if (reaction) forceAnim(reaction.state, reaction.duration, speech)
-              updateCooldown = 15000
             }
           }
         } catch { /* malformed msg */ }
@@ -303,8 +306,6 @@ export default function App() {
         }
 
         // ── Periodic checks ────────────────────────────────
-        if (updateCooldown > 0) updateCooldown -= dt
-
         aiThoughtInterval += dt
         if (aiThoughtInterval > 180000 && ollamaAvailable) { // every 3 min
           aiThoughtInterval = 0
