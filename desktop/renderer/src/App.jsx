@@ -409,14 +409,29 @@ export default function App() {
 // ── Event → Animation reactions ────────────────────────────
 function getReaction(eventType, data) {
   const t = (data?.activity_type || '').toLowerCase()
-  // Misma lógica para switch y update: animación según tipo de actividad
+  const pick = (states) => states[Math.floor(Math.random() * states.length)]
+
   switch (eventType) {
     case 'activity.switch':
     case 'activity.update':
-      if (t === 'coding')  return { state: 'jump',     duration: 1500 }
-      if (t === 'browsing') return { state: 'sniffwalk',duration: 2000 }
+      if (t === 'coding')
+        return pick([
+          { state: 'jump',  duration: 1500 },
+          { state: 'run',   duration: 2000 },
+          { state: 'walk',  duration: 2500 },
+        ])
+      if (t === 'browsing')
+        return pick([
+          { state: 'sniffwalk', duration: 2000 },
+          { state: 'walk',      duration: 2500 },
+        ])
       if (t === 'reading' || t === 'design')
-                            return { state: 'sniff',    duration: 1500 }
+        return pick([
+          { state: 'sniff', duration: 2000 },
+          { state: 'sit',   duration: 3000 },
+        ])
+      if (t === 'communication')
+        return { state: 'sniff', duration: 2000 }
       return null
     default:
       return null
