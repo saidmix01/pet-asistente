@@ -2,7 +2,12 @@
   "name": "pet-asistente",
   "version": "1.0.0",
   "private": true,
+  "main": "desktop/electron/main.js",
   "description": "Desktop pet assistant — Electron frontend + Python backend + Ollama AI",
+  "author": {
+    "name": "Said Avendaño",
+    "email": "saidavendano@artistshot.com"
+  },
   "scripts": {
     "install:all": "cd desktop && npm install && cd renderer && npm install",
     "dev:backend": "cd backend && python3 main.py",
@@ -16,6 +21,8 @@
     "start": "cd desktop && npm run start"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1"
   }
 }

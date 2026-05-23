@@ -5,6 +5,7 @@ copyright: Copyright © 2026 Said Avendaño
 directories:
   output: release
   buildResources: desktop/assets
+  app: desktop
 
 extraResources:
   - from: backend/dist/
@@ -12,22 +13,19 @@ extraResources:
     filter:
       - "**/*"
 
-  - from: desktop/assets
-    to: assets
-
 files:
-  - desktop/electron/**/*
-  - desktop/renderer/dist/**/*
-  - desktop/chat-renderer/**/*
-  - desktop/assets/**/*
-  - desktop/package.json
+  - electron/**/*
+  - renderer/dist/**/*
+  - chat-renderer/**/*
+  - assets/**/*
+  - package.json
 
 # ── Windows ────────────────────────────────────────────────
 win:
   target:
-    - portable  # .exe portátil (no necesita instalación)
-    - nsis      # instalador
-  icon: desktop/assets/icon.png
+    - portable
+    - nsis
+  icon: assets/icon.png
   artifactName: ${productName}-${version}-${arch}.${ext}
 
 # ── macOS ─────────────────────────────────────────────────
@@ -35,7 +33,7 @@ mac:
   target:
     - dmg
     - zip
-  icon: desktop/assets/icon.png
+  icon: assets/icon.png
   category: public.app-category.productivity
   artifactName: ${productName}-${version}-${arch}.${ext}
 
@@ -43,7 +41,6 @@ mac:
 linux:
   target:
     - AppImage
-    - deb
-  icon: desktop/assets/icon.png
+  icon: assets/icon.png
   category: Utility
   artifactName: ${productName}-${version}-${arch}.${ext}
