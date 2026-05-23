@@ -324,8 +324,12 @@ export default function App() {
   }
   const onPointerEnter = () => { hoveredRef.current = true; setInteractive(true) }
   const onPointerLeave = () => { if (!draggingRef.current) setInteractive(false) }
+  const wasDraggedRef = useRef(false)
+
   const onPointerDown = (e) => {
-    if (e.button !== 0) return; draggingRef.current = true
+    if (e.button !== 0) return
+    draggingRef.current = true
+    wasDraggedRef.current = false
     lastPtrRef.current = { x: e.screenX, y: e.screenY }
     setInteractive(true); e.currentTarget.setPointerCapture(e.pointerId)
   }
@@ -333,6 +337,7 @@ export default function App() {
     if (!draggingRef.current) return
     const dx = e.screenX - lastPtrRef.current.x
     const dy = e.screenY - lastPtrRef.current.y
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) wasDraggedRef.current = true
     lastPtrRef.current = { x: e.screenX, y: e.screenY }
     posRef.current = { x: posRef.current.x + dx, y: posRef.current.y + dy }
     moveWindowBy(dx, dy)
@@ -341,6 +346,19 @@ export default function App() {
     if (!draggingRef.current) return; draggingRef.current = false
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
     if (!hoveredRef.current) setInteractive(false)
+  }
+
+  const onPetClick = () => {
+    if (wasDraggedRef.current) return
+    if (!ollamaAvailable) {
+      showSpeech('Ollama no disponible 😴', 3000)
+      return
+    }
+    showSpeech('Pensando... 🤔', 2000)
+    generateThought(lastKnownActivity || 'trabajando').then(t => {
+      if (t) showSpeech(t, 5000)
+      else showSpeech('... no se me ocurre nada 😅', 3000)
+    })
   }
 
   // ── Render ───────────────────────────────────────────────
@@ -364,6 +382,7 @@ export default function App() {
         onPointerMove={onPointerMove}
         onPointerUp={stopDrag}
         onPointerCancel={stopDrag}
+        onClick={onPetClick}
       >
         <div ref={bubbleRef} className="speech-bubble" />
       </div>
