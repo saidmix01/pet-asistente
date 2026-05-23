@@ -325,14 +325,28 @@ export default function App() {
       else showSpeech(`${gConfig.assistantName} desconectado 🔴`, 4000)
     }
 
+    let clickTimer = null
     petClickRef.current = () => {
       if (wasDraggedRef.current) return
-      if (!api?.openChat) {
-        showSpeech('Chat no disponible 😴', 2000)
+      // Double-click detection
+      if (clickTimer) {
+        clearTimeout(clickTimer)
+        clickTimer = null
+        // Double click → config
+        setShowConfig(true)
+        showSpeech('⚙️ Ajustes', 2000)
         return
       }
-      api.openChat().catch(() => {})
-      showSpeech('💬', 1500)
+      clickTimer = setTimeout(() => {
+        clickTimer = null
+        // Single click → chat
+        if (!api?.openChat) {
+          showSpeech('Chat no disponible 😴', 2000)
+          return
+        }
+        api.openChat().catch(() => {})
+        showSpeech('💬', 1500)
+      }, 300)
     }
 
     // ── WebSocket ──────────────────────────────────────────

@@ -23,8 +23,9 @@ class AutoReport:
     Also available on demand via API.
     """
 
-    def __init__(self, task_tracker: TaskTracker | None = None) -> None:
+    def __init__(self, task_tracker: TaskTracker | None = None, time_tracker=None) -> None:
         self._task_tracker = task_tracker
+        self._time_tracker = time_tracker
         self._running = False
         self._thread: threading.Thread | None = None
 
@@ -71,20 +72,28 @@ class AutoReport:
         if self._task_tracker:
             active_tasks = self._task_tracker.get_active_tasks()
 
+        # 3b. Get time tracking data
+        time_data = {}
+        if self._time_tracker:
+            try:
+                time_data = self._time_tracker.get_project_time_summary()
+            except Exception:
+                pass
+
         # 4. Generate text report
         text_report = generate_report(today)
 
         # 5. Try AI enhancement
-        from services.ai import is_available, enhance_daily_report
+        from services.ai import is_ollama_available, enhance_daily_report
 
         ai_enhanced = None
-        if is_available():
+        if is_ollama_available():
             try:
                 ai_data = {
                     "date": today,
                     "logs": logs,
                     "git_activity": git_activity,
-                    "time_summary": {},
+                    "time_summary": time_data,
                     "raw_text": text_report,
                 }
                 ai_enhanced = enhance_daily_report(ai_data)

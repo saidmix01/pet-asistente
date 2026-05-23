@@ -152,12 +152,22 @@ async function checkStatus() {
     const r = await fetch('http://127.0.0.1:8000/ai/status')
     const d = await r.json()
     const mode = gConfig.aiMode || 'local'
-    if (mode === 'local') {
-      statusEl.textContent = d.ollama_available ? '🟢 Ollama conectado' : '🔴 Ollama no disponible'
-      statusEl.style.color = d.ollama_available ? '#4caf50' : '#ff5252'
+    if (mode === 'remote') {
+      if (gConfig.deepseekToken) {
+        statusEl.textContent = '🟢 DeepSeek listo'
+        statusEl.style.color = '#4caf50'
+      } else {
+        statusEl.textContent = '🟡 DeepSeek: falta token'
+        statusEl.style.color = '#ffc107'
+      }
     } else {
-      statusEl.textContent = gConfig.deepseekToken ? '🟢 DeepSeek configurado' : '🟡 DeepSeek: falta token'
-      statusEl.style.color = gConfig.deepseekToken ? '#4caf50' : '#ffc107'
+      if (d.ollama_available) {
+        statusEl.textContent = '🟢 Ollama conectado'
+        statusEl.style.color = '#4caf50'
+      } else {
+        statusEl.textContent = '🔴 Ollama no disponible. Usá modo remoto con DeepSeek'
+        statusEl.style.color = '#ff5252'
+      }
     }
   } catch {
     statusEl.textContent = '🔴 Backend no disponible'
@@ -197,21 +207,35 @@ async function sendMessage() {
   messagesEl.scrollTop = messagesEl.scrollHeight
 
   try {
-    const r = await fetch('http://127.0.0.1:8000/ai/chat', {
+    const r = await fetch('http://127.0.0.1:8000/chat/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         message: text,
+        session_id: 'default',
         mode: gConfig.aiMode || 'local',
         api_token: gConfig.deepseekToken || '',
       }),
     })
+    if (!r.ok) {
+      const errData = await r.json()
+      typing.remove()
+      addMessage(errData?.detail || 'Error del servidor 😵', false)
+      return
+    }
     const d = await r.json()
     typing.remove()
     addMessage(d?.response || '... 😶', false)
   } catch {
     typing.remove()
-    addMessage('No pude pensar 😅 Revisa que Ollama esté corriendo.', false)
+    const mode = gConfig.aiMode || 'local'
+    if (mode === 'remote' && gConfig.deepseekToken) {
+      addMessage('No pude conectar con DeepSeek 😅 Revisa el token y la conexión.', false)
+    } else if (mode === 'local') {
+      addMessage('Ollama no responde 😅 Asegurate de tenerlo corriendo.', false)
+    } else {
+      addMessage('No hay IA configurada 😅 Abrí ajustes.', false)
+    }
   }
 
   loading = false
@@ -223,8 +247,27 @@ inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendMessage()
 })
 
-// Focus input on load
-setTimeout(() => inputEl.focus(), 300)
+// ── Load history ───────────────
+async function loadHistory() {
+  try {
+    const r = await fetch('http://127.0.0.1:8000/chat/history?session_id=default&limit=30')
+    const d = await r.json()
+    if (d.history && d.history.length > 0) {
+      messagesEl.innerHTML = ''  // Clear welcome message
+      for (const msg of d.history) {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          addMessage(msg.content, msg.role === 'user')
+        }
+      }
+    }
+  } catch { /* no history */ }
+}
+
+// Load config + history, then focus
+loadConfig().then(() => {
+  loadHistory()
+  setTimeout(() => inputEl.focus(), 300)
+})
 </script>
 </body>
 </html>

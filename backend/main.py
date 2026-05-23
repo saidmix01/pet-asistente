@@ -79,7 +79,7 @@ def main() -> None:
 
     # ── Auto Report (generates at 4pm) ────────────────────────────────
     from integrations.auto_report import AutoReport
-    auto_report = AutoReport(task_tracker=task_tracker)
+    auto_report = AutoReport(task_tracker=task_tracker, time_tracker=time_tracker)
 
     # ── Start internal subsystems ─────────────────────────────────────
     processor.start()
