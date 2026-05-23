@@ -103,7 +103,7 @@ async def pet_chat(message: dict):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=180) as resp:
             data = json.loads(resp.read().decode())
             text = (data.get("message", {}) or {}).get("content", "").strip()
             clean = text.replace("</think>", "").replace("<think>", "").strip()[:100]
