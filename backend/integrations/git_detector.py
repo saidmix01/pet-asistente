@@ -5,22 +5,55 @@ Processes recent commits and branches to enrich the daily report.
 
 import subprocess
 import os
+import sys
 from pathlib import Path
 from typing import Any
 from services.logger import info, warning, error
 
 # Common project directories to scan for git repos
-SCAN_PATHS = [
-    str(Path.home() / "Projects"),
-    str(Path.home() / "projects"),
-    str(Path.home() / "code"),
-    str(Path.home() / "Code"),
-    str(Path.home() / "work"),
-    str(Path.home() / "Work"),
-    str(Path.home() / "Documents"),
-    str(Path.home() / "Desktop"),
-    "/Volumes/DATOS/Proyectos",
-]
+SCAN_PATHS: list[str] = []
+home = Path.home()
+
+# Cross-platform defaults
+if sys.platform == "win32":
+    SCAN_PATHS = [
+        str(home / "Projects"),
+        str(home / "projects"),
+        str(home / "code"),
+        str(home / "source"),
+        str(home / "repos"),
+        str(home / "Documents"),
+        str(home / "Desktop"),
+        "C:\\Projects",
+        "C:\\code",
+        "D:\\Projects",
+        "D:\\code",
+    ]
+elif sys.platform == "darwin":
+    SCAN_PATHS = [
+        str(home / "Projects"),
+        str(home / "projects"),
+        str(home / "code"),
+        str(home / "Code"),
+        str(home / "work"),
+        str(home / "Work"),
+        str(home / "Documents"),
+        str(home / "Desktop"),
+        "/Volumes/DATOS/Proyectos",
+    ]
+else:  # Linux
+    SCAN_PATHS = [
+        str(home / "Projects"),
+        str(home / "projects"),
+        str(home / "code"),
+        str(home / "Code"),
+        str(home / "work"),
+        str(home / "Work"),
+        str(home / "Documents"),
+        str(home / "Desktop"),
+        str(home / "git"),
+        str(home / "dev"),
+    ]
 
 
 class GitDetector:

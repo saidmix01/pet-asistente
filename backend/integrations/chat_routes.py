@@ -40,6 +40,12 @@ async def chat_send(req: ChatRequest):
     if not req.message.strip():
         raise HTTPException(400, "Mensaje vacío")
 
+    from services.ai import is_ollama_available, is_deepseek_configured
+    if req.mode == "local" and not is_ollama_available():
+        return {"response": "⚠️ Ollama no está disponible. Usá mode=remote con un token de DeepSeek."}
+    if req.mode == "remote" and not is_deepseek_configured(req.api_token):
+        return {"response": "⚠️ Modo remoto requiere un token de DeepSeek. Configuralo en Ajustes."}
+
     # Save user message
     save_message(req.session_id, "user", req.message)
 

@@ -54,9 +54,10 @@ def main() -> None:
     asyncio.set_event_loop(loop)
     stream = EventStream(bus, state, loop=loop)
 
-    # ── Real activity monitoring (macOS) ─────────────────────────────
-    from core.real_activity_tracker import RealActivityTracker
-    tracker = RealActivityTracker(bus, use_simulation_fallback=True)
+    # ── Real activity monitoring (cross-platform) ────────────────────
+    from core.platform_detector import CrossPlatformTracker, get_os
+    tracker = CrossPlatformTracker(bus, use_simulation_fallback=True)
+    info(f"Activity monitoring active ({get_os().upper()})")
 
     # Processing layer
     from services.activity_service import ActivityService
@@ -115,7 +116,7 @@ def main() -> None:
     info("Work Assistant Core v1.2 running on http://127.0.0.1:8000")
     info("WebSocket endpoint: ws://127.0.0.1:8000/ws/state")
     info("ClickUp integration ready")
-    info("Real activity monitoring active (macOS)")
+    # info("Real activity monitoring active")  # ya se muestra arriba
     info("Task Tracker active (polling ClickUp every 60s)")
     info("Time Tracker active (measuring hours per task)")
     info("Chat history enabled (persistent conversations)")
