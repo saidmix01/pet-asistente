@@ -79,28 +79,4 @@ body {
   margin-top: 0.5px;
 }
 
-/* ── Connection status dot ── */
-.conn-dot {
-  position: fixed;
-  bottom: 4px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  transition: background 0.3s;
-  pointer-events: none;
-  z-index: 999;
-}
-.conn-dot.online {
-  background: #22c55e;
-  box-shadow: 0 0 4px #22c55e88;
-}
-.conn-dot.offline {
-  background: #ef4444;
-  box-shadow: 0 0 4px #ef444488;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
+

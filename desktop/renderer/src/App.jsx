@@ -122,7 +122,6 @@ let gFallbackX = 0
 export default function App() {
   const elRef    = useRef(null)
   const bubbleRef = useRef(null)
-  const dotRef   = useRef(null)
 
   // ── Refs (game-loop state) ───────────────────────────────
   const stateRef    = useRef('idle')
@@ -156,12 +155,6 @@ export default function App() {
     }
   }
 
-  const setConnDot = (online) => {
-    const dot = dotRef.current
-    if (!dot) return
-    dot.className = `conn-dot ${online ? 'online' : 'offline'}`
-  }
-
   // ── Game loop + WebSocket ────────────────────────────────
   useEffect(() => {
     let rafId = null
@@ -190,6 +183,11 @@ export default function App() {
       frameAccum = 0
       frameRef.current = 0
       if (speech !== undefined) showSpeech(speech)
+    }
+
+    const setConnDot = (online) => {
+      if (online) showSpeech('Conectado 🟢', 2000)
+      else showSpeech('Desconectado 🔴', 4000)
     }
 
     // ── WebSocket ──────────────────────────────────────────
@@ -364,7 +362,6 @@ export default function App() {
       >
         <div ref={bubbleRef} className="speech-bubble" />
       </div>
-      <div ref={dotRef} className="conn-dot offline" />
     </div>
   )
 }
