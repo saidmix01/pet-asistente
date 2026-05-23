@@ -41,6 +41,30 @@ const WS_URL = 'ws://127.0.0.1:8000/ws/state'
 const RECONNECT_MS = 3000
 const OLLAMA_CHAT = 'http://127.0.0.1:11434/api/chat'
 
+// ── Animaciones periódicas según modo activo ─────────────
+const MODE_ANIMS = {
+  coding:        [
+    { state: 'jump', duration: 1500 },
+    { state: 'run',  duration: 2000 },
+  ],
+  browsing:      [
+    { state: 'sniffwalk', duration: 2000 },
+    { state: 'sniff',     duration: 2000 },
+  ],
+  communication: [
+    { state: 'walk', duration: 2500 },
+    { state: 'sit',  duration: 3000 },
+  ],
+  reading:       [
+    { state: 'sniff', duration: 2000 },
+    { state: 'sit',   duration: 3000 },
+  ],
+  design:        [
+    { state: 'sniff', duration: 2000 },
+    { state: 'sit',   duration: 3000 },
+  ],
+}
+
 // ── Speech messages per event ──────────────────────────────
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 
@@ -166,7 +190,8 @@ export default function App() {
     let overdueCheckInterval = 0
     let lastOverdueNotified = new Set()
     let speechTimer = null
-    let lastReactedType = ''  // solo reaccionar una vez por tipo de actividad
+    let lastReactedType = ''
+    let modeAnimTimer = 30000 // primera animación modo a los 30s
 
     const showSpeech = (text, duration = 4000) => {
       if (!text) return
@@ -303,6 +328,18 @@ export default function App() {
           stateTimer = rand(d[0], d[1])
           frameAccum = 0
           frameRef.current = frameRef.current % nextAnim.frames
+        }
+
+        // ── Animaciones periódicas según modo ──────────────
+        modeAnimTimer -= dt
+        if (modeAnimTimer <= 0 && lastReactedType) {
+          const pool = MODE_ANIMS[lastReactedType]
+          if (pool) {
+            const anim = pool[Math.floor(Math.random() * pool.length)]
+            forceAnim(anim.state, anim.duration, null)
+          }
+          // reset timer: 20-50s
+          modeAnimTimer = 20000 + Math.random() * 30000
         }
 
         // ── Periodic checks ────────────────────────────────
