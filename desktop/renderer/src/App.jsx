@@ -134,6 +134,12 @@ export default function App() {
       `${-(SHEET.offsetY + anim.row * SHEET.frameHeight)}px`
     el.style.transform =
       `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
+
+    // Counter-flip speech bubble so text stays readable
+    const bubble = bubbleRef.current
+    if (bubble) {
+      bubble.style.transform = `scaleX(${mirrored ? -1 : 1})`
+    }
   }
 
   const setConnDot = (online) => {
