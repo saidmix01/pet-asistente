@@ -12,6 +12,10 @@ let backendProcess = null
 // ── Paths ──────────────────────────────────────────────────
 const isDev = !!process.env.VITE_DEV_SERVER_URL || !app.isPackaged
 
+function getPythonCommand() {
+  return process.platform === 'win32' ? 'python' : 'python3'
+}
+
 function getBackendPath() {
   if (isDev) {
     // Dev: use Python directly
@@ -19,7 +23,8 @@ function getBackendPath() {
   }
   // Prod: use compiled binary
   const resourcePath = process.resourcesPath
-  return path.join(resourcePath, 'backend', 'asistente-core')
+  const binName = process.platform === 'win32' ? 'asistente-core.exe' : 'asistente-core'
+  return path.join(resourcePath, 'backend', binName)
 }
 
 function getConfigPath() {
@@ -70,9 +75,10 @@ function startBackend() {
         reject(new Error('Backend main.py not found'))
         return
       }
-      cmd = 'python3'
+      const pyCmd = getPythonCommand()
+      cmd = pyCmd
       args = [mainPy]
-      console.log(`[Pet] Starting backend via python3: ${mainPy}`)
+      console.log(`[Pet] Starting backend via ${pyCmd}: ${mainPy}`)
     }
 
     backendProcess = spawn(cmd, args, {
@@ -129,14 +135,30 @@ function startBackend() {
 function stopBackend() {
   if (backendProcess) {
     console.log('[Pet] Stopping backend...')
-    backendProcess.kill('SIGTERM')
-    // Force kill after 5s
-    setTimeout(() => {
+    if (process.platform === 'win32') {
+      // Windows: use taskkill to properly terminate the process tree
+      try {
+        require('child_process').execSync(`taskkill /pid ${backendProcess.pid} /f /t`, { stdio: 'ignore' })
+      } catch {}
       if (backendProcess) {
-        backendProcess.kill('SIGKILL')
-        backendProcess = null
+        backendProcess.kill()
+        setTimeout(() => {
+          if (backendProcess) {
+            backendProcess.kill()
+            backendProcess = null
+          }
+        }, 5000)
       }
-    }, 5000)
+    } else {
+      backendProcess.kill('SIGTERM')
+      // Force kill after 5s
+      setTimeout(() => {
+        if (backendProcess) {
+          backendProcess.kill('SIGKILL')
+          backendProcess = null
+        }
+      }, 5000)
+    }
   }
 }
 
