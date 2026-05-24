@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { AudioEngine, connectAudioToEvents } from './audio/audio_engine.js'
+import { AudioEngine } from './audio/audio_engine.js'
 
 const api = typeof window !== 'undefined' ? window.pet : null
 
@@ -236,7 +236,6 @@ export default function App() {
     // ── Audio Engine ──────────────────────────────────────────
     const audioEngine = new AudioEngine()
     audioEngine.init()
-    let audioCleanup = null
 
     let clickTimer = null
     petClickRef.current = () => {
@@ -419,7 +418,7 @@ export default function App() {
       if (ws) ws.close()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (speechTimer) clearTimeout(speechTimer)
-      if (audioCleanup) audioCleanup()
+
     }
   }, [])
 
