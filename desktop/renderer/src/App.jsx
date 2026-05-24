@@ -307,8 +307,7 @@ export default function App() {
       readyRef.current = true
       lastTime = performance.now()
       applyVisual()
-      // TEST: mensaje largo fijo para depurar globo cortado
-      showSpeech('🔴 TEST: Este es un mensaje muy largo para probar si el globo de la mascota se corta o no con el contenedor. Necesitamos ver si el texto se envuelve correctamente, si la burbuja crece en altura y si todo el contenido es visible sin cortarse. Debe medir unos 500 caracteres aproximadamente para asegurarnos de que el fix funciona bien en cualquier situacion. Si ves este texto completo sin cortes, el fix de la UI esta funcionando correctamente 👍', 30000)
+      showSpeech(`👋 Soy ${gConfig.assistantName}`, 2500)
     })()
 
     connectWs()
