@@ -151,4 +151,13 @@ def _get_today_context() -> str:
     except:
         pass
 
+    # Recent ClickUp mentions
+    try:
+        from integrations.clickup_mentions import get_mentions_tracker
+        mentions = get_mentions_tracker().get_recent_mentions_summary(limit=3)
+        if mentions:
+            parts.append(f"Menciones recientes: {mentions}")
+    except:
+        pass
+
     return ". ".join(parts) if parts else "Sin datos registrados hoy"

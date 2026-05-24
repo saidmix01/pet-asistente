@@ -138,6 +138,16 @@ async function checkOverdueTasks() {
   } catch { return [] }
 }
 
+// ── ClickUp mentions check ──────────────────────────────────
+async function checkNewMentions() {
+  try {
+    const r = await fetch('http://127.0.0.1:8000/clickup/mentions/check')
+    if (!r.ok) return []
+    const data = await r.json()
+    return data.new_mentions || []
+  } catch { return [] }
+}
+
 function rand(min, max) { return Math.random() * (max - min) + min }
 
 function pickDefault(current) {
@@ -192,7 +202,9 @@ export default function App() {
     let lastKnownActivity = 'unknown'
     let aiThoughtInterval = 0
     let overdueCheckInterval = 0
+    let mentionsCheckInterval = 0
     let lastOverdueNotified = new Set()
+    let lastMentionNotified = new Set()
     let speechTimer = null
     let lastReactedType = ''
     let modeAnimTimer = 30000
@@ -364,6 +376,22 @@ export default function App() {
               newOverdue.forEach(t => lastOverdueNotified.add(t.id))
               const names = newOverdue.map(t => t.name).slice(0, 2).join(', ')
               forceAnim('jump', 2000, `¡Tarea atrasada! ${names} ⏰`)
+            }
+          })
+        }
+
+        mentionsCheckInterval += dt
+        if (mentionsCheckInterval > 120000) {
+          mentionsCheckInterval = 0
+          checkNewMentions().then(mentions => {
+            const newMentions = mentions.filter(m => !lastMentionNotified.has(m.id))
+            if (newMentions.length > 0) {
+              newMentions.forEach(m => lastMentionNotified.add(m.id))
+              const first = newMentions[0]
+              const text = first.comment_text
+                ? `📬 ${first.author}: "${first.comment_text.slice(0, 40)}"`
+                : `📬 ${first.author} comentó en "${first.task_name.slice(0, 25)}"`
+              forceAnim('jump', 4000, text)
             }
           })
         }

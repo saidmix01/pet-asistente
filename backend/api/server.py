@@ -15,6 +15,7 @@ from integrations.ai_routes import router as ai_router
 from integrations.chat_routes import router as chat_router
 from integrations.pomodoro import router as pomodoro_router
 from integrations.clickup_service import ClickUpService
+from integrations.clickup_mentions_routes import router as mentions_router
 from core.system_state import SystemState
 from core.event_stream import EventStream
 from services.logger import info
@@ -86,4 +87,5 @@ def create_app(
     app.include_router(ai_router)
     app.include_router(chat_router)
     app.include_router(pomodoro_router)
+    app.include_router(mentions_router)
     return app

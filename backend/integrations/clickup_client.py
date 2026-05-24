@@ -180,6 +180,10 @@ class ClickUpClient:
 
     # ── Time Tracking ─────────────────────────────────────────────────
 
+    def get_task_comments(self, task_id: str) -> list[dict]:
+        """Get comments for a specific task."""
+        return self._request("GET", f"/task/{task_id}/comment") or []
+
     def get_time_entries(
         self,
         team_id: str,
