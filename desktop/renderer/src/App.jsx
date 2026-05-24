@@ -440,7 +440,7 @@ export default function App() {
           <div ref={bubbleRef} className="speech-bubble" />
         </div>
       </div>
-    </>
+  )
   )
 }
 
