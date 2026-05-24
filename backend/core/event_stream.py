@@ -38,7 +38,6 @@ class EventStream:
     # ── Client management ─────────────────────────────────────────────
 
     async def connect(self, ws: WebSocket) -> None:
-        await ws.accept()
         self._clients.add(ws)
         info(f"WebSocket client connected ({len(self._clients)} total)")
 
@@ -98,6 +97,11 @@ class EventStream:
         for ws in self._clients:
             try:
                 await ws.send_text(payload)
+            except RuntimeError as e:
+                if "not connected" in str(e) or "close" in str(e).lower():
+                    stale.append(ws)
+                else:
+                    stale.append(ws)
             except Exception:
                 stale.append(ws)
         for ws in stale:

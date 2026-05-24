@@ -53,12 +53,28 @@ async def websocket_state(ws: WebSocket):
         await ws.close(code=1011, reason="EventStream not initialized")
         return
 
-    await event_stream.connect(ws)
+    # Accept first, then connect to stream
+    await ws.accept()
+    try:
+        await event_stream.connect(ws)
+    except Exception:
+        # If connect fails, close gracefully
+        try:
+            await ws.close()
+        except Exception:
+            pass
+        return
+
     try:
         # Keep connection alive — read loop detects client disconnect
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
         pass
+    except RuntimeError as e:
+        if "not connected" in str(e):
+            pass
+        else:
+            raise
     finally:
         event_stream.disconnect(ws)
