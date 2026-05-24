@@ -385,6 +385,7 @@ export default function App() {
               newOverdue.forEach(t => lastOverdueNotified.add(t.id))
               const names = newOverdue.map(t => t.name).slice(0, 2).join(', ')
               forceAnim('jump', 2000, `¡Tarea atrasada! ${names} ⏰`)
+              if (audioEngine) audioEngine.play('alerta')
             }
           })
         }
@@ -401,6 +402,7 @@ export default function App() {
                 ? `📬 ${first.author}: "${first.comment_text.slice(0, 40)}"`
                 : `📬 ${first.author} comentó en "${first.task_name.slice(0, 25)}"`
               forceAnim('jump', 4000, text)
+              if (audioEngine) audioEngine.play('alerta')
             }
           })
         }
