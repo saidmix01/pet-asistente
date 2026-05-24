@@ -77,7 +77,7 @@ async def ai_enhanced_report(
 
     enhanced = enhance_daily_report(report_data, mode=mode, api_token=api_token)
 
-    model_used = "deepseek-r1:1.5b" if mode == "local" else "deepseek-chat"
+    model_used = "qwen2:0.5b" if mode == "local" else "deepseek-chat"
     return {
         "date": report_date,
         "enhanced": enhanced,

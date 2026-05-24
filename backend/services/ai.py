@@ -1,5 +1,6 @@
 """
-AI Service — communicates with Ollama (local) or DeepSeek API (remote).
+AI Service — communicates with the AI Gateway on the server.
+The gateway handles Ollama (local) + DeepSeek (remote) routing.
 """
 
 import json
@@ -8,20 +9,19 @@ from typing import Any
 
 from services.logger import info, warning, error
 
-OLLAMA_BASE = "http://localhost:11434"
-DEEPSEEK_BASE = "https://api.deepseek.com/v1"
-DEFAULT_MODEL = "deepseek-r1:8b"
-DEEPSEEK_MODEL = "deepseek-chat"
+GATEWAY_BASE = "http://192.168.1.6:8888"
+DEFAULT_MODEL = "qwen2:0.5b"
 
 
 # ── Health checks ──────────────────────────────────────────────
 
 def is_ollama_available() -> bool:
-    """Check if Ollama is running locally."""
+    """Check if Ollama is running via the gateway."""
     try:
-        req = urllib.request.Request(f"{OLLAMA_BASE}/api/tags")
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            return resp.status == 200
+        req = urllib.request.Request(f"{GATEWAY_BASE}/health")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("ollama_available", False)
     except Exception:
         return False
 
@@ -41,31 +41,20 @@ def generate(
     timeout: int = 120,
 ) -> str | None:
     """
-    Generate text using either local Ollama or remote DeepSeek API.
+    Generate text via the AI Gateway.
+    Supports mode="local" (Ollama) and mode="remote" (DeepSeek).
     """
-    if mode == "remote" and api_token:
-        return _generate_deepseek(prompt, system, api_token, timeout)
-    return _generate_ollama(prompt, model, system, timeout)
-
-
-def _generate_ollama(
-    prompt: str,
-    model: str = DEFAULT_MODEL,
-    system: str = "",
-    timeout: int = 120,
-) -> str | None:
-    """Generate via local Ollama."""
     payload = {
         "model": model,
         "prompt": prompt,
-        "stream": False,
+        "system": system,
+        "mode": mode,
+        "api_token": api_token,
     }
-    if system:
-        payload["system"] = system
 
     try:
         req = urllib.request.Request(
-            f"{OLLAMA_BASE}/api/generate",
+            f"{GATEWAY_BASE}/generate",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -73,53 +62,12 @@ def _generate_ollama(
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
             return data.get("response", "").strip()
-    except Exception as e:
-        error(f"Ollama generate failed: {e}")
-        return None
-
-
-def _generate_deepseek(
-    prompt: str,
-    system: str = "",
-    api_token: str = "",
-    timeout: int = 120,
-) -> str | None:
-    """Generate via DeepSeek API (OpenAI-compatible)."""
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    payload = {
-        "model": DEEPSEEK_MODEL,
-        "messages": messages,
-        "stream": False,
-        "max_tokens": 1024,
-        "temperature": 0.7,
-    }
-
-    try:
-        req = urllib.request.Request(
-            f"{DEEPSEEK_BASE}/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_token}",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
-            choices = data.get("choices", [])
-            if choices:
-                return choices[0].get("message", {}).get("content", "").strip()
-            return None
     except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        error(f"DeepSeek API {e.code}: {body[:200]}")
+        body = e.read().decode()[:200]
+        error(f"Gateway generate error {e.code}: {body}")
         return None
     except Exception as e:
-        error(f"DeepSeek generate failed: {e}")
+        error(f"Gateway generate failed: {e}")
         return None
 
 
@@ -133,76 +81,36 @@ def chat(
     timeout: int = 180,
 ) -> dict | None:
     """
-    Chat completion. Supports Ollama and DeepSeek API.
+    Chat completion via the AI Gateway (OpenAI-compatible).
     Returns dict with {message, content} or None.
     """
-    if mode == "remote" and api_token:
-        return _chat_deepseek(messages, api_token, timeout)
-    return _chat_ollama(messages, model, timeout)
-
-
-def _chat_ollama(
-    messages: list[dict],
-    model: str = DEFAULT_MODEL,
-    timeout: int = 180,
-) -> dict | None:
-    """Chat via Ollama /api/chat."""
     payload = {
         "model": model,
         "messages": messages,
-        "stream": False,
+        "mode": mode,
+        "api_token": api_token,
     }
+
     try:
         req = urllib.request.Request(
-            f"{OLLAMA_BASE}/api/chat",
+            f"{GATEWAY_BASE}/v1/chat/completions",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
-            msg = data.get("message", {})
-            return {"message": {"content": msg.get("content", "").strip()}}
-    except Exception as e:
-        error(f"Ollama chat failed: {e}")
-        return None
-
-
-def _chat_deepseek(
-    messages: list[dict],
-    api_token: str = "",
-    timeout: int = 180,
-) -> dict | None:
-    """Chat via DeepSeek API."""
-    payload = {
-        "model": DEEPSEEK_MODEL,
-        "messages": messages,
-        "stream": False,
-        "max_tokens": 2048,
-        "temperature": 0.7,
-    }
-    try:
-        req = urllib.request.Request(
-            f"{DEEPSEEK_BASE}/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_token}",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
             choices = data.get("choices", [])
             if choices:
-                return {"message": {"content": choices[0].get("message", {}).get("content", "").strip()}}
+                content = choices[0].get("message", {}).get("content", "").strip()
+                return {"message": {"content": content}}
             return None
     except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        error(f"DeepSeek API {e.code}: {body[:200]}")
+        body = e.read().decode()[:200]
+        error(f"Gateway chat error {e.code}: {body}")
         return None
     except Exception as e:
-        error(f"DeepSeek chat failed: {e}")
+        error(f"Gateway chat failed: {e}")
         return None
 
 
