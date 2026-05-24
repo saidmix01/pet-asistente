@@ -170,8 +170,8 @@ function getRendererUrl() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 500,
+    width: 300,
+    height: 360,
     frame: false,
     transparent: true,
     resizable: false,

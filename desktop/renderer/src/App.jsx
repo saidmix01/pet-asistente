@@ -88,6 +88,7 @@ const EVENT_SPEECH = {
 // ── AI pet thoughts via backend ────────────────────────────
 let gConfig = { aiMode: 'local', deepseekToken: '', assistantName: 'Pet' }
 let ollamaAvailable = false
+let backendOnline = false
 
 async function loadConfig() {
   if (api?.getConfig) {
@@ -99,13 +100,18 @@ async function loadConfig() {
 async function checkOllama() {
   try {
     const r = await fetch('http://127.0.0.1:8000/ai/status')
+    backendOnline = true
     const data = await r.json()
     ollamaAvailable = data.ollama_available
     return ollamaAvailable
-  } catch { return false }
+  } catch {
+    backendOnline = false
+    return false
+  }
 }
 
 async function generateThought(activityType) {
+  if (!backendOnline) return null  // Don't spam when backend is down
   if (!ollamaAvailable && gConfig.aiMode !== 'remote') return null
   try {
     const r = await fetch(BACKEND_CHAT, {
