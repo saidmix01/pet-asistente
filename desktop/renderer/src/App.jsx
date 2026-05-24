@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 const api = typeof window !== 'undefined' ? window.pet : null
 
@@ -147,107 +147,8 @@ function pickDefault(current) {
 
 let gFallbackX = 0
 
-// ── Config Modal Component ──────────────────────────────────
-function ConfigModal({ onClose }) {
-  const [name, setName] = useState(gConfig.assistantName || 'Pet')
-  const [mode, setMode] = useState(gConfig.aiMode || 'local')
-  const [token, setToken] = useState(gConfig.deepseekToken || '')
-  const [saving, setSaving] = useState(false)
-
-  const handleSave = async () => {
-    setSaving(true)
-    const cfg = {
-      assistantName: name || 'Pet',
-      aiMode: mode,
-      deepseekToken: token,
-      firstLaunch: false,
-    }
-    gConfig = cfg
-    if (api?.saveConfig) {
-      await api.saveConfig(cfg)
-    }
-    if (api?.markConfigured) {
-      await api.markConfigured()
-    }
-    setSaving(false)
-    onClose()
-  }
-
-  return (
-    <div className="config-overlay">
-      <div className="config-modal">
-        <h2>🐾 Configuración Inicial</h2>
-        <p className="config-subtitle">Personalizá tu asistente virtual</p>
-
-        <div className="config-field">
-          <label>Nombre del asistente</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ej: Pet, Jarvis, Mascota..."
-            maxLength={20}
-          />
-        </div>
-
-        <div className="config-field">
-          <label>Modo de IA</label>
-          <div className="config-radio-group">
-            <label className={`config-radio ${mode === 'local' ? 'active' : ''}`}>
-              <input
-                type="radio"
-                name="aiMode"
-                value="local"
-                checked={mode === 'local'}
-                onChange={() => setMode('local')}
-              />
-              <span className="config-radio-label">🖥️ Local (Ollama)</span>
-              <span className="config-radio-desc">Más privado, requiere Ollama instalado</span>
-            </label>
-            <label className={`config-radio ${mode === 'remote' ? 'active' : ''}`}>
-              <input
-                type="radio"
-                name="aiMode"
-                value="remote"
-                checked={mode === 'remote'}
-                onChange={() => setMode('remote')}
-              />
-              <span className="config-radio-label">☁️ Remoto (DeepSeek)</span>
-              <span className="config-radio-desc">No necesita Ollama, requiere token</span>
-            </label>
-          </div>
-        </div>
-
-        {mode === 'remote' && (
-          <div className="config-field">
-            <label>Token de DeepSeek</label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="sk-..."
-            />
-            <span className="config-field-hint">
-              Obtenelo en platform.deepseek.com
-            </span>
-          </div>
-        )}
-
-        <button
-          className="config-save-btn"
-          onClick={handleSave}
-          disabled={saving || (mode === 'remote' && !token)}
-        >
-          {saving ? 'Guardando...' : '✨ ¡Comenzar!'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ── Main App ───────────────────────────────────────────────
 export default function App() {
-  const [showConfig, setShowConfig] = useState(false)
   const elRef    = useRef(null)
   const bubbleRef = useRef(null)
   const stateRef    = useRef('idle')
@@ -278,15 +179,9 @@ export default function App() {
     }
   }
 
-  // ── Check first launch ──────────────────────────────────
+  // First launch check — handled by electron main.js (opens config window)
   useEffect(() => {
-    ;(async () => {
-      await loadConfig()
-      const firstLaunch = api?.isFirstLaunch ? await api.isFirstLaunch() : false
-      if (firstLaunch) {
-        setShowConfig(true)
-      }
-    })()
+    loadConfig()
   }, [])
 
   useEffect(() => {
@@ -332,8 +227,8 @@ export default function App() {
       if (clickTimer) {
         clearTimeout(clickTimer)
         clickTimer = null
-        // Double click → config
-        setShowConfig(true)
+        // Double click → config window
+        if (api?.openConfig) api.openConfig().catch(() => {})
         showSpeech('⚙️ Ajustes', 2000)
         return
       }
@@ -521,8 +416,6 @@ export default function App() {
   }
 
   return (
-    <>
-      {showConfig && <ConfigModal onClose={() => setShowConfig(false)} />}
       <div className="stage">
         <div
           ref={elRef}

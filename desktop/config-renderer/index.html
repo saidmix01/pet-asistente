@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Config - Pet Asistente</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  display: flex;
+  place-items: center;
+  place-content: center;
+  height: 100vh;
+  overflow: hidden;
+}
+.container {
+  width: 380px;
+  padding: 28px 32px;
+}
+h2 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  text-align: center;
+  color: #fff;
+}
+.subtitle {
+  margin: 0 0 24px 0;
+  font-size: 12px;
+  text-align: center;
+  color: #999;
+}
+.field { margin-bottom: 18px; }
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ccc;
+  margin-bottom: 6px;
+}
+.field input[type="text"], .field input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #16213e;
+  color: #eee;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+.field input:focus { border-color: #536dfe; }
+.hint {
+  display: block;
+  font-size: 10px;
+  color: #888;
+  margin-top: 4px;
+}
+.radio-group { display: flex; flex-direction: column; gap: 8px; }
+.radio-option {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #16213e;
+  transition: border-color 0.2s;
+}
+.radio-option.active { border-color: #536dfe; background: #1a1a3e; }
+.radio-option input[type="radio"] { display: none; }
+.radio-label { display: block; font-size: 13px; font-weight: 600; color: #fff; }
+.radio-desc { display: block; font-size: 10px; color: #888; margin-top: 2px; }
+.btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #536dfe;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.btn:hover { background: #3d5afe; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.status { text-align: center; font-size: 11px; color: #888; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>🐾 Configuración</h2>
+  <p class="subtitle">Personalizá tu asistente virtual</p>
+
+  <div class="field">
+    <label>Nombre del asistente</label>
+    <input type="text" id="assistantName" placeholder="Ej: Pet, Jarvis..." maxlength="20">
+  </div>
+
+  <div class="field">
+    <label>Modo de IA</label>
+    <div class="radio-group">
+      <label class="radio-option" id="modeLocal">
+        <input type="radio" name="aiMode" value="local" checked>
+        <span class="radio-label">🖥️ Local (Ollama)</span>
+        <span class="radio-desc">Más privado, requiere Ollama instalado</span>
+      </label>
+      <label class="radio-option" id="modeRemote">
+        <input type="radio" name="aiMode" value="remote">
+        <span class="radio-label">☁️ Remoto (DeepSeek)</span>
+        <span class="radio-desc">No necesita Ollama, requiere token</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="field" id="tokenField" style="display:none">
+    <label>Token de DeepSeek</label>
+    <input type="password" id="deepseekToken" placeholder="sk-...">
+    <span class="hint">Obtenelo en platform.deepseek.com</span>
+  </div>
+
+  <button class="btn" id="saveBtn">💾 Guardar</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const nameInput = document.getElementById('assistantName')
+const modeLocal = document.getElementById('modeLocal')
+const modeRemote = document.getElementById('modeRemote')
+const tokenField = document.getElementById('tokenField')
+const tokenInput = document.getElementById('deepseekToken')
+const saveBtn = document.getElementById('saveBtn')
+const statusEl = document.getElementById('status')
+
+// Load current config
+async function loadConfig() {
+  try {
+    if (window.pet?.getConfig) {
+      const cfg = await window.pet.getConfig()
+      if (cfg) {
+        nameInput.value = cfg.assistantName || 'Pet'
+        if (cfg.aiMode === 'remote') {
+          document.querySelector('input[name="aiMode"][value="remote"]').checked = true
+          modeRemote.classList.add('active')
+          modeLocal.classList.remove('active')
+          tokenField.style.display = 'block'
+        } else {
+          document.querySelector('input[name="aiMode"][value="local"]').checked = true
+          modeLocal.classList.add('active')
+          modeRemote.classList.remove('active')
+          tokenField.style.display = 'none'
+        }
+        if (cfg.deepseekToken) tokenInput.value = cfg.deepseekToken
+      }
+    }
+  } catch {}
+}
+
+// Mode toggle
+document.querySelectorAll('input[name="aiMode"]').forEach(el => {
+  el.addEventListener('change', () => {
+    const isRemote = el.value === 'remote' && el.checked
+    tokenField.style.display = isRemote ? 'block' : 'none'
+    modeLocal.classList.toggle('active', document.querySelector('input[name="aiMode"][value="local"]').checked)
+    modeRemote.classList.toggle('active', document.querySelector('input[name="aiMode"][value="remote"]').checked)
+  })
+})
+
+// Save
+saveBtn.addEventListener('click', async () => {
+  const cfg = {
+    assistantName: nameInput.value.trim() || 'Pet',
+    aiMode: document.querySelector('input[name="aiMode"]:checked')?.value || 'local',
+    deepseekToken: tokenInput.value.trim(),
+    firstLaunch: false,
+  }
+  saveBtn.disabled = true
+  saveBtn.textContent = 'Guardando...'
+  try {
+    if (window.pet?.saveConfig) await window.pet.saveConfig(cfg)
+    if (window.pet?.markConfigured) await window.pet.markConfigured()
+    statusEl.textContent = '✅ Guardado'
+    statusEl.style.color = '#4caf50'
+    setTimeout(() => window.close(), 1500)
+  } catch {
+    statusEl.textContent = '❌ Error al guardar'
+    statusEl.style.color = '#ff5252'
+    saveBtn.disabled = false
+    saveBtn.textContent = '💾 Guardar'
+  }
+})
+
+loadConfig()
+</script>
+</body>
+</html>

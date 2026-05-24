@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('pet', {
   getPosition: () => ipcRenderer.invoke('pet:get-position'),
   getScreenSize: () => ipcRenderer.invoke('pet:get-screen-size'),
   openChat: () => ipcRenderer.invoke('pet:open-chat'),
+  openConfig: () => ipcRenderer.invoke('pet:open-config'),
 
   // ── Config (new) ───────────────────────────────────────
   getConfig: () => ipcRenderer.invoke('pet:get-config'),

@@ -6,6 +6,7 @@ const http = require('http')
 
 let mainWindow = null
 let chatWindow = null
+let configWindow = null
 let backendProcess = null
 
 // ── Paths ──────────────────────────────────────────────────
@@ -232,6 +233,34 @@ ipcMain.handle('pet:move-by', async (event, payload) => {
   return true
 })
 
+// ── Config window (separada, no overlay) ─────────────────
+function openConfigWindow() {
+  if (configWindow && !configWindow.isDestroyed()) {
+    configWindow.focus()
+    return
+  }
+  configWindow = new BrowserWindow({
+    width: 440,
+    height: 520,
+    resizable: false,
+    alwaysOnTop: true,
+    title: 'Pet Asistente - Configuración',
+    backgroundColor: '#1a1a2e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  configWindow.setMenuBarVisibility(false)
+  configWindow.loadFile(path.join(__dirname, '..', 'config-renderer', 'index.html'))
+  configWindow.on('closed', () => { configWindow = null })
+}
+
+ipcMain.handle('pet:open-config', async () => {
+  openConfigWindow()
+})
+
 // ── Chat window ────────────────────────────────────────────
 ipcMain.handle('pet:open-chat', async () => {
   if (chatWindow && !chatWindow.isDestroyed()) {
@@ -263,9 +292,15 @@ app.whenReady().then(async () => {
     console.log('[Pet] Starting backend...')
     await startBackend()
     console.log('[Pet] Backend is ready, creating window...')
+
+    // Check first launch — open config window separately
+    const cfg = loadConfig()
+    if (!cfg || cfg.firstLaunch !== false) {
+      console.log('[Pet] First launch — opening config window...')
+      openConfigWindow()
+    }
   } catch (err) {
     console.error('[Pet] Failed to start backend:', err.message)
-    // Fallback: show error but still open window
   }
 
   createWindow()

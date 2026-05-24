@@ -17,6 +17,7 @@ files:
   - electron/**/*
   - renderer/dist/**/*
   - chat-renderer/**/*
+  - config-renderer/**/*
   - assets/**/*
   - package.json
 
