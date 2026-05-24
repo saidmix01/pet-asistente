@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { AudioEngine, connectAudioToEvents } from './audio/audio_engine.js'
 
 const api = typeof window !== 'undefined' ? window.pet : null
 
@@ -232,6 +233,11 @@ export default function App() {
       else showSpeech(`${gConfig.assistantName} desconectado 🔴`, 4000)
     }
 
+    // ── Audio Engine ──────────────────────────────────────────
+    const audioEngine = new AudioEngine()
+    audioEngine.init()
+    let audioCleanup = null
+
     let clickTimer = null
     petClickRef.current = () => {
       if (wasDraggedRef.current) return
@@ -267,6 +273,9 @@ export default function App() {
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)
+          // ── Audio events ──────────────────────────────────
+          _handleAudioEvent(audioEngine, msg)
+
           if (msg.type === 'event' && msg.data?.event) {
             const ev = msg.data.event
             const data = msg.data.data
@@ -408,8 +417,38 @@ export default function App() {
       if (ws) ws.close()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (speechTimer) clearTimeout(speechTimer)
+      if (audioCleanup) audioCleanup()
     }
   }, [])
+
+  // ── Audio event handler (inside useEffect closure) ───────
+  function _handleAudioEvent(engine, msg) {
+    const type = msg.type
+    const data = msg.data || {}
+
+    switch (type) {
+      case 'thought':
+        const tType = data.thought?.type
+        if (tType === 'focus' || tType === 'encouragement') engine.play('ladrido')
+        break
+
+      case 'mood_change':
+        if (data.mood === 'excited') engine.play('ladrido')
+        break
+
+      case 'event':
+        const ev = data.event || ''
+        const evData = data.data || {}
+        if (ev === 'task.completed') engine.play('ladrido')
+        if (ev === 'clickup.mention' || ev === 'deadline.approaching') engine.play('alerta')
+        if (ev === 'behavior.request' && evData.behavior === 'sleep') engine.play('ronquido')
+        break
+
+      case 'behavior.request':
+        if (data.behavior === 'sleep') engine.play('ronquido')
+        break
+    }
+  }
 
   const setInteractive = (val) => { if (!api?.setInteractive) return; api.setInteractive(val).catch(() => {}) }
   const moveWindowBy = (dx, dy) => {
