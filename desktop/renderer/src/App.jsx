@@ -441,7 +441,6 @@ export default function App() {
         </div>
       </div>
   )
-  )
 }
 
 // ── Event → Animation reactions ────────────────────────────
