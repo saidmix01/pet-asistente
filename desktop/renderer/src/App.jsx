@@ -8,7 +8,7 @@ const SHEET = {
   frameWidth: 64, frameHeight: 64,
   offsetX: 95, offsetY: 0,
 }
-const WINDOW_W = 150
+const WINDOW_W = 400
 
 // ── Animation definitions ──────────────────────────────────
 const ANIMS = {
