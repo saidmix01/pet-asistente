@@ -1,212 +1,197 @@
 /**
  * Audio Engine — ambient contextual sounds for the pet assistant.
  *
- * Uses Web Audio API for programmatic beeps as fallback,
- * tries to load real mp3 files if available.
+ * Uses base64-encoded WAV beeps (inline, no external files needed).
+ * Audio() + data URI es lo más confiable en Electron.
  */
 
-// ── Constants ──────────────────────────────────────────────
-const SOUND_PATHS = [
-  '/sounds/',                    // Vite dev + build
-  '../../sounds/',              // Relative from dist
-  '../../../Desktop/sounds/',   // User's Desktop
-]
+// ── Generate WAV beep as base64 data URI ──────────────────
+function makeBeep(freq, duration, volume = 0.15) {
+  const sampleRate = 44100
+  const samples = Math.floor(sampleRate * duration)
+  const buffer = new ArrayBuffer(44 + samples * 2)
+  const view = new DataView(buffer)
 
-const SOUND_CONFIG = {
-  ladrido: {
-    file: 'ladrido.mp3',
-    cooldown: 45000,
-    chance: 0.6,
-    fallbackFreq: 600,
-    fallbackDuration: 0.15,
-  },
-  ronquido: {
-    file: 'ronquido.mp3',
-    cooldown: 300000,
-    chance: 1.0,
-    fallbackFreq: 120,
-    fallbackDuration: 0.8,
-  },
-  alerta: {
-    file: 'alerta.mp3',
-    cooldown: 60000,
-    chance: 1.0,
-    fallbackFreq: 880,
-    fallbackDuration: 0.3,
-  },
+  // WAV header
+  const writeStr = (off, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i))
+  }
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + samples * 2, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)       // PCM
+  view.setUint16(22, 1, true)       // mono
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeStr(36, 'data')
+  view.setUint32(40, samples * 2, true)
+
+  // Generate sine wave with fade out
+  for (let i = 0; i < samples; i++) {
+    const t = i / sampleRate
+    const fade = 1 - (i / samples)
+    const sample = Math.sin(2 * Math.PI * freq * t) * volume * fade
+    view.setInt16(44 + i * 2, sample * 32767, true)
+  }
+
+  // Convert to base64 data URI
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return 'data:audio/wav;base64,' + btoa(binary)
 }
+
+function makeMultiBeep(...notes) {
+  // Create a sequence of beeps
+  const sampleRate = 44100
+  let totalSamples = 0
+  const parts = notes.map(([freq, dur, vol]) => {
+    const s = Math.floor(sampleRate * dur)
+    totalSamples += s
+    return { freq, samples: s, vol: vol || 0.12 }
+  })
+
+  const buffer = new ArrayBuffer(44 + totalSamples * 2)
+  const view = new DataView(buffer)
+
+  const writeStr = (off, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i))
+  }
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + totalSamples * 2, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeStr(36, 'data')
+  view.setUint32(40, totalSamples * 2, true)
+
+  let offset = 44
+  for (const p of parts) {
+    for (let i = 0; i < p.samples; i++) {
+      const t = i / sampleRate
+      const fade = 1 - (i / p.samples)
+      const sample = Math.sin(2 * Math.PI * p.freq * t) * p.vol * fade
+      view.setInt16(offset, sample * 32767, true)
+      offset += 2
+    }
+  }
+
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return 'data:audio/wav;base64,' + btoa(binary)
+}
+
+// Pre-generate sounds
+const SOUNDS = {
+  ladrido: makeMultiBeep([400, 0.08, 0.15], [600, 0.06, 0.12], [550, 0.04, 0.1]),
+  ronquido: makeBeep(110, 0.6, 0.08),
+  alerta: makeMultiBeep([880, 0.15, 0.12], [0, 0.05, 0], [880, 0.15, 0.12]),
+}
+
+const COOLDOWNS = {
+  ladrido: 45000,
+  ronquido: 300000,
+  alerta: 60000,
+}
+
+const CHANCES = {
+  ladrido: 0.6,
+  ronquido: 1.0,
+  alerta: 1.0,
+}
+
 
 // ── Audio Engine ───────────────────────────────────────────
 class AudioEngine {
   constructor() {
-    this._audioCtx = null
-    this._sounds = {}
     this._lastPlayed = {}
     this._isPlaying = false
     this._isMuted = false
     this._volume = 0.25
     this._quietMode = false
     this._initialized = false
-    this._useFallback = false
-    this._debug = []
+    this._audioElements = {}
   }
-
-  // ── Initialization ──────────────────────────────────────
 
   init() {
     if (this._initialized) return
 
-    // Try to initialize Web Audio API (for fallback sounds)
-    try {
-      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-      // Try to resume immediately
-      if (this._audioCtx.state === 'suspended') {
-        this._audioCtx.resume()
-      }
-      // Also resume on user interaction
-      const resume = () => {
-        if (this._audioCtx?.state === 'suspended') {
-          this._audioCtx.resume()
-        }
-        document.removeEventListener('click', resume)
-        document.removeEventListener('keydown', resume)
-      }
-      document.addEventListener('click', resume)
-      document.addEventListener('keydown', resume)
-    } catch (e) {
-      this._debug.push(`AudioContext: ${e.message}`)
-    }
-
-    // Try loading mp3 files from multiple paths
-    for (const [name, config] of Object.entries(SOUND_CONFIG)) {
-      let loaded = false
-      for (const basePath of SOUND_PATHS) {
-        const fullPath = basePath + config.file
-        try {
-          const audio = new Audio()
-          audio.preload = 'auto'
-          audio.src = fullPath
-          // Test if it loads
-          audio.addEventListener('canplaythrough', () => {
-            this._debug.push(`${name}: loaded from ${fullPath}`)
-          }, { once: true })
-          audio.addEventListener('error', () => {
-            // Try next path silently
-          }, { once: true })
-          this._sounds[name] = audio
-          loaded = true
-          break  // Found a working path
-        } catch (e) {
-          continue
-        }
-      }
-      if (!loaded) {
-        this._debug.push(`${name}: no mp3 found, using fallback`)
+    // Pre-create Audio elements for each sound
+    for (const [name, dataUri] of Object.entries(SOUNDS)) {
+      try {
+        const audio = new Audio(dataUri)
+        audio.preload = 'auto'
+        audio.volume = this._volume
+        this._audioElements[name] = audio
+      } catch (e) {
+        console.warn(`[Audio] Failed to create ${name}:`, e.message)
       }
     }
 
-    // Always use fallback for reliability (mp3 is bonus)
-    this._useFallback = true
     this._initialized = true
-    console.log('[Audio] Engine initialized', this._debug.length ? `(${this._debug.length} messages)` : '')
+    console.log('[Audio] Engine ready. Sounds:', Object.keys(this._audioElements).join(', '))
   }
 
-  // ── Playback ─────────────────────────────────────────────
-
   play(soundName) {
-    if (this._quietMode) { console.log('[Audio] quiet mode, skipping'); return }
-    if (this._isMuted) { console.log('[Audio] muted, skipping'); return }
-    if (this._isPlaying) { console.log('[Audio] already playing, skipping'); return }
+    if (this._quietMode) return
+    if (this._isMuted) return
+    if (this._isPlaying) return
 
-    const config = SOUND_CONFIG[soundName]
-    if (!config) {
-      console.warn(`[Audio] Unknown sound: ${soundName}`)
+    const audio = this._audioElements[soundName]
+    if (!audio) {
+      console.warn(`[Audio] Sound not found: ${soundName}`)
       return
     }
 
-    // Cooldown check
+    // Cooldown
     const last = this._lastPlayed[soundName] || 0
-    if (Date.now() - last < config.cooldown) {
-      console.log(`[Audio] ${soundName} on cooldown`)
-      return
-    }
+    if (Date.now() - last < (COOLDOWNS[soundName] || 60000)) return
 
     // Random chance
-    if (Math.random() > config.chance) {
-      console.log(`[Audio] ${soundName} random chance missed`)
-      return
-    }
+    if (Math.random() > (CHANCES[soundName] || 1.0)) return
 
     this._isPlaying = true
     this._lastPlayed[soundName] = Date.now()
-    console.log(`[Audio] Playing ${soundName}`)
 
-    // Try mp3 first
-    const audio = this._sounds[soundName]
-    if (audio && !this._useFallback) {
+    // Reset and play
+    try {
       audio.currentTime = 0
-      audio.volume = config.fallbackDuration * 0.3
+      audio.volume = this._volume
       audio.play().then(() => {
         audio.onended = () => { this._isPlaying = false }
-      }).catch(() => {
-        this._playFallback(config)
+      }).catch((e) => {
+        console.warn('[Audio] play() failed:', e.message)
+        this._isPlaying = false
       })
-    } else {
-      this._playFallback(config)
-    }
-  }
-
-  _playFallback(config) {
-    if (!this._audioCtx) {
-      this._isPlaying = false
-      return
-    }
-
-    try {
-      // Ensure AudioContext is running
-      if (this._audioCtx.state === 'suspended') {
-        this._audioCtx.resume()
-      }
-
-      const osc = this._audioCtx.createOscillator()
-      const gain = this._audioCtx.createGain()
-
-      osc.type = 'sine'
-      osc.frequency.value = config.fallbackFreq
-      gain.gain.value = config.fallbackDuration > 0.5 ? 0.08 : 0.12
-
-      osc.connect(gain)
-      gain.connect(this._audioCtx.destination)
-
-      const duration = Math.max(config.fallbackDuration, 0.2)
-      osc.start()
-      gain.gain.exponentialRampToValueAtTime(0.001, this._audioCtx.currentTime + duration)
-      osc.stop(this._audioCtx.currentTime + duration)
-
-      osc.onended = () => { this._isPlaying = false }
-      // Safety timeout in case onended doesn't fire
-      setTimeout(() => { this._isPlaying = false }, (duration * 1000) + 200)
     } catch (e) {
-      console.warn('[Audio] Fallback playback failed:', e.message)
+      console.warn('[Audio] Error:', e.message)
       this._isPlaying = false
     }
+
+    // Safety timeout
+    setTimeout(() => { this._isPlaying = false }, 2000)
   }
 
-  // ── Volume control ───────────────────────────────────────
-
-  setVolume(value) { this._volume = Math.max(0, Math.min(1, value)) }
+  // ── Controls ─────────────────────────────────────────
+  setVolume(v) { this._volume = Math.max(0, Math.min(1, v)) }
   mute() { this._isMuted = true }
   unmute() { this._isMuted = false }
   get isMuted() { return this._isMuted }
-
-  // ── Quiet mode ──────────────────────────────────────────
-
   enableQuietMode() { this._quietMode = true }
   disableQuietMode() { this._quietMode = false }
-  get quietMode() { return this._quietMode }
 }
 
 
-// ── Export ─────────────────────────────────────────────────
 export { AudioEngine }
 export default AudioEngine
