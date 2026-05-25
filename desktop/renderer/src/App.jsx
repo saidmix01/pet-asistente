@@ -322,6 +322,7 @@ export default function App() {
       lastTime = performance.now()
       applyVisual()
       showSpeech(`👋 Soy ${gConfig.assistantName}`, 2500)
+      setTimeout(() => audioEngine.play('ladrido'), 800)
     })()
 
     connectWs()

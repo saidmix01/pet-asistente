@@ -59,7 +59,11 @@ class AudioEngine {
     // Try to initialize Web Audio API (for fallback sounds)
     try {
       this._audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-      // Resume on user interaction
+      // Try to resume immediately
+      if (this._audioCtx.state === 'suspended') {
+        this._audioCtx.resume()
+      }
+      // Also resume on user interaction
       const resume = () => {
         if (this._audioCtx?.state === 'suspended') {
           this._audioCtx.resume()
@@ -159,6 +163,11 @@ class AudioEngine {
     }
 
     try {
+      // Ensure AudioContext is running
+      if (this._audioCtx.state === 'suspended') {
+        this._audioCtx.resume()
+      }
+
       const osc = this._audioCtx.createOscillator()
       const gain = this._audioCtx.createGain()
 
@@ -169,11 +178,14 @@ class AudioEngine {
       osc.connect(gain)
       gain.connect(this._audioCtx.destination)
 
+      const duration = Math.max(config.fallbackDuration, 0.2)
       osc.start()
-      gain.gain.exponentialRampToValueAtTime(0.001, this._audioCtx.currentTime + Math.max(config.fallbackDuration, 0.2))
-      osc.stop(this._audioCtx.currentTime + Math.max(config.fallbackDuration, 0.2))
+      gain.gain.exponentialRampToValueAtTime(0.001, this._audioCtx.currentTime + duration)
+      osc.stop(this._audioCtx.currentTime + duration)
 
       osc.onended = () => { this._isPlaying = false }
+      // Safety timeout in case onended doesn't fire
+      setTimeout(() => { this._isPlaying = false }, (duration * 1000) + 200)
     } catch (e) {
       console.warn('[Audio] Fallback playback failed:', e.message)
       this._isPlaying = false
