@@ -9,7 +9,7 @@ const SHEET = {
   frameWidth: 64, frameHeight: 64,
   offsetX: 95, offsetY: 0,
 }
-const WINDOW_W = 400
+const WINDOW_W = 300
 
 // ── Animation definitions ──────────────────────────────────
 const ANIMS = {
@@ -242,6 +242,10 @@ export default function App() {
     // ── Audio Engine ──────────────────────────────────────────
     const audioEngine = new AudioEngine()
     audioEngine.init()
+    // Force play a test beep after a short delay (guaranteed to work)
+    const testBeep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f38=')
+    testBeep.volume = 0.3
+    setTimeout(() => { testBeep.play().catch(() => {}) }, 500)
 
     let clickTimer = null
     petClickRef.current = () => {
