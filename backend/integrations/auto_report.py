@@ -5,6 +5,7 @@ Combines: TaskTracker data + Git activity + Daily Log entries.
 
 import os
 import json
+import sys
 import time
 import threading
 from datetime import datetime, timezone, date
@@ -14,7 +15,14 @@ from integrations.git_detector import GitDetector
 from integrations.task_tracker import TaskTracker
 from services.logger import info, warning, error
 
-REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "daily_reports")
+
+def _get_data_dir() -> str:
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        base = os.environ.get('APPDATA', os.path.expanduser('~'))
+        return os.path.join(base, 'pet-asistente', 'data')
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+REPORTS_DIR = os.path.join(_get_data_dir(), "daily_reports")
 
 
 class AutoReport:
@@ -23,8 +31,9 @@ class AutoReport:
     Also available on demand via API.
     """
 
-    def __init__(self, task_tracker: TaskTracker | None = None) -> None:
+    def __init__(self, task_tracker: TaskTracker | None = None, time_tracker=None) -> None:
         self._task_tracker = task_tracker
+        self._time_tracker = time_tracker
         self._running = False
         self._thread: threading.Thread | None = None
 
@@ -44,7 +53,11 @@ class AutoReport:
             now = datetime.now()
             # At 4:00 PM generate the report (check within 60s window)
             if now.hour == 16 and now.minute == 0:
-                self.generate_today_report()
+                # Only generate if not already generated today
+                today = date.today().isoformat()
+                filepath = os.path.join(REPORTS_DIR, f"report_{today}.json")
+                if not os.path.exists(filepath):
+                    self.generate_today_report()
                 # Sleep 2 minutes to avoid regenerating
                 time.sleep(120)
             time.sleep(60)
@@ -71,20 +84,28 @@ class AutoReport:
         if self._task_tracker:
             active_tasks = self._task_tracker.get_active_tasks()
 
+        # 3b. Get time tracking data
+        time_data = {}
+        if self._time_tracker:
+            try:
+                time_data = self._time_tracker.get_project_time_summary()
+            except Exception:
+                pass
+
         # 4. Generate text report
         text_report = generate_report(today)
 
         # 5. Try AI enhancement
-        from services.ai import is_available, enhance_daily_report
+        from services.ai import is_ollama_available, enhance_daily_report
 
         ai_enhanced = None
-        if is_available():
+        if is_ollama_available():
             try:
                 ai_data = {
                     "date": today,
                     "logs": logs,
                     "git_activity": git_activity,
-                    "time_summary": {},
+                    "time_summary": time_data,
                     "raw_text": text_report,
                 }
                 ai_enhanced = enhance_daily_report(ai_data)

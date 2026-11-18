@@ -32,6 +32,7 @@ async def get_status():
 
 
 @router.post("/connect")
+@router.post("/connect")
 async def connect(req: ConnectRequest):
     """Connect to ClickUp with a personal API token."""
     if clickup_service is None:
@@ -42,6 +43,8 @@ async def connect(req: ConnectRequest):
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
+        from services.logger import error
+        error(f"ClickUp connect failed: {type(e).__name__}: {e}")
         raise HTTPException(500, f"Connection failed: {e}")
 
 
@@ -56,11 +59,12 @@ async def disconnect():
 
 @router.post("/sync")
 async def sync():
-    """Full sync: teams → spaces → folders → lists → tasks."""
+    """Full sync: teams → spaces → folders → lists → tasks (en thread separado)."""
+    import asyncio
     if clickup_service is None:
         raise HTTPException(500, "Service not initialized")
     try:
-        result = clickup_service.sync_all()
+        result = await asyncio.to_thread(clickup_service.sync_all)
         return {"message": "Sync completed", **result}
     except RuntimeError as e:
         raise HTTPException(400, str(e))

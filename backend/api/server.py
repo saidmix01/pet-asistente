@@ -2,15 +2,57 @@
 FastAPI server factory — creates the Uvicorn server instance.
 """
 
+import threading
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router as main_router
 from integrations.clickup_routes import router as clickup_router
+from integrations.due_soon import router as due_soon_router
 from integrations.report_routes import router as report_router
 from integrations.auto_report_routes import router as auto_report_router
 from integrations.ai_routes import router as ai_router
+from integrations.chat_routes import router as chat_router
+from integrations.pomodoro import router as pomodoro_router
 from integrations.clickup_service import ClickUpService
+from integrations.clickup_mentions_routes import router as mentions_router
 from core.system_state import SystemState
 from core.event_stream import EventStream
+from services.logger import info
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Auto-sync ClickUp on startup + start heartbeat in uvicorn's event loop."""
+    import asyncio
+
+    # Start heartbeat in the background (runs in uvicorn's event loop)
+    stream = getattr(app.state, 'event_stream', None)
+    heartbeat_task = None
+    if stream:
+        # Give the EventStream access to uvicorn's running loop
+        stream._loop = asyncio.get_running_loop()
+        heartbeat_task = asyncio.create_task(stream.heartbeat_loop(interval=5.0))
+
+    import integrations.clickup_routes as cu_routes
+    svc = cu_routes.clickup_service
+    if svc and svc.is_connected():
+        info("ClickUp token found — auto-syncing in background...")
+        threading.Thread(target=_do_sync, args=(svc,), daemon=True).start()
+    else:
+        info("ClickUp not configured — skipping auto-sync")
+    yield
+    # Cleanup
+    if heartbeat_task:
+        heartbeat_task.cancel()
+
+
+def _do_sync(svc):
+    try:
+        result = svc.sync_all(days_back=7)
+        info(f"ClickUp sync complete: {result.get('tasks_synced', 0)} tasks")
+    except Exception as e:
+        info(f"ClickUp auto-sync failed: {type(e).__name__}: {e}")
 
 
 def create_app(
@@ -19,25 +61,66 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(
         title="Work Assistant Core",
-        version="1.1.0",
+        version="1.2.0",
         description="Local backend for monitoring, simulating and recording user activity.",
+        lifespan=lifespan,
     )
 
-    # Inject dependencies into routes modules
     import api.routes as routes
-
     if state is not None:
         routes.system_state = state
     if stream is not None:
         routes.event_stream = stream
 
-    # Inject ClickUp service
     import integrations.clickup_routes as cu_routes
     cu_routes.clickup_service = ClickUpService()
 
+    # Inject time_tracker into chat routes
+    import integrations.chat_routes as chat_routes_module
+    import integrations.ai_routes as ai_routes_module
+    # These will be set from main.py
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Log all requests and errors for debugging
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    class LoggingMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            try:
+                response = await call_next(request)
+                if response.status_code >= 400:
+                    info(f"HTTP {response.status_code} {request.method} {request.url.path}")
+                return response
+            except Exception as e:
+                info(f"HTTP ERROR {request.method} {request.url.path}: {type(e).__name__}: {e}")
+                raise
+
+    app.add_middleware(LoggingMiddleware)
+
     app.include_router(main_router)
+    # Import config_routes inside create_app to ensure all dependencies are ready
+    try:
+        from api.config_routes import router as config_router
+        app.include_router(config_router)
+        info("config_routes loaded OK")
+    except Exception as e:
+        info(f"WARNING: config_routes not available: {e}")
     app.include_router(clickup_router)
+    app.include_router(due_soon_router)
     app.include_router(report_router)
     app.include_router(auto_report_router)
     app.include_router(ai_router)
+    app.include_router(chat_router)
+    app.include_router(pomodoro_router)
+    app.include_router(mentions_router)
+
     return app

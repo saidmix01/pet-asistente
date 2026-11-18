@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react'
+import { AudioEngine } from './audio/audio_engine.js'
 
 const api = typeof window !== 'undefined' ? window.pet : null
 
-const SPRITE_URL = '/assets/pugasset-grid.png'
+const SPRITE_URL = './assets/pugasset-grid.png'
 const SHEET = {
   width: 800, height: 512,
   frameWidth: 64, frameHeight: 64,
   offsetX: 95, offsetY: 0,
 }
-const WINDOW_W = 150
+const WINDOW_W = 300
 
 // ── Animation definitions ──────────────────────────────────
 const ANIMS = {
@@ -24,8 +25,8 @@ const ANIMS = {
 
 const STATE_DURATIONS = {
   jump:     [1000, 3000],
-  idle:     [2000, 4000],
-  idle2:    [2000, 4000],
+  idle:     [4000, 8000],
+  idle2:    [4000, 8000],
   sit:      [2000, 5000],
   walk:     [1500, 4000],
   run:      [1000, 3000],
@@ -33,12 +34,37 @@ const STATE_DURATIONS = {
   sniffwalk:[1500, 4000],
 }
 
-const STATES = Object.keys(ANIMS)
+const DEFAULT_STATES = ['idle', 'idle2']
 
 // ── WebSocket config ───────────────────────────────────────
 const WS_URL = 'ws://127.0.0.1:8000/ws/state'
-const RECONNECT_MS = 3000
+const RECONNECT_MS = 5000
 const OLLAMA_CHAT = 'http://127.0.0.1:11434/api/chat'
+const BACKEND_CHAT = 'http://127.0.0.1:8000/ai/chat'
+
+// ── Animaciones periódicas según modo activo ─────────────
+const MODE_ANIMS = {
+  coding:        [
+    { state: 'jump', duration: 1500 },
+    { state: 'run',  duration: 2000 },
+  ],
+  browsing:      [
+    { state: 'sniffwalk', duration: 2000 },
+    { state: 'sniff',     duration: 2000 },
+  ],
+  communication: [
+    { state: 'walk', duration: 2500 },
+    { state: 'sit',  duration: 3000 },
+  ],
+  reading:       [
+    { state: 'sniff', duration: 2000 },
+    { state: 'sit',   duration: 3000 },
+  ],
+  design:        [
+    { state: 'sniff', duration: 2000 },
+    { state: 'sit',   duration: 3000 },
+  ],
+}
 
 // ── Speech messages per event ──────────────────────────────
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
@@ -47,71 +73,102 @@ const EVENT_SPEECH = {
   'activity.update': (data) => {
     const t = (data?.activity_type || '').toLowerCase()
     const map = {
-      coding:        ['Programando 💻', 'Modo código ✨', 'Escribiendo código 🚀', 'Debugueando 🐛'],
-      browsing:      ['Navegando 🌐', 'Investigando 🔍', 'Buscando info 📖'],
+      coding:        ['A programar 💻', 'Modo código ✨', 'Escribiendo código 🚀'],
+      browsing:      ['Navegando 🌐', 'Investigando 🔍'],
       reading:       ['Leyendo 📚', 'Modo lectura 🤓'],
-      communication: ['Hablando con alguien 💬', 'En llamada 📞'],
+      communication: ['En llamada 💬'],
       design:        ['Diseñando 🎨', 'Modo creativo 🎭'],
-      entertainment: ['Disfrutando 🎵', 'Momento de ocio 😎'],
-      other:         ['Trabajando en algo 👀', 'Ocupado 🔧'],
     }
-    return pick(map[t] || map.other)
+    return pick(map[t]) || null
   },
-  'activity.switch': () => pick(['Cambiando de actividad 🔄', 'A ver qué hay aquí 🤔', 'Moviéndome 🐾']),
-  'activity.idle': () => pick(['Zzz... 😴', 'Esperando... ⏳', 'Descansando 💤', 'Aburrido 🥱']),
+  'activity.switch': () => null,
+  'activity.idle': () => null,
 }
 
-// ── AI pet thoughts via Ollama ─────────────────────────────
+// ── AI pet thoughts via backend ────────────────────────────
+let gConfig = { aiMode: 'local', deepseekToken: '', assistantName: 'Pet' }
 let ollamaAvailable = false
-let lastThoughtTime = 0
+let backendOnline = false
+
+async function loadConfig() {
+  if (api?.getConfig) {
+    const cfg = await api.getConfig()
+    if (cfg) gConfig = cfg
+  }
+}
 
 async function checkOllama() {
   try {
     const r = await fetch('http://127.0.0.1:8000/ai/status')
-    const d = await r.json()
-    ollamaAvailable = d.available
-    return d.available
-  } catch { return false }
+    backendOnline = true
+    const data = await r.json()
+    ollamaAvailable = data.ollama_available
+    return ollamaAvailable
+  } catch {
+    backendOnline = false
+    return false
+  }
 }
 
 async function generateThought(activityType) {
-  if (!ollamaAvailable) return null
+  if (!backendOnline) return null  // Don't spam when backend is down
+  if (!ollamaAvailable && gConfig.aiMode !== 'remote') return null
   try {
-    const prompt = `Eres una mascota virtual que observa a su humano trabajar. Genera UNA frase corta (máximo 8 palabras) y divertida viendo que está ${activityType || 'trabajando'}. Responde solo la frase, sin comillas, sin asteriscos, sin formato.`
-    const r = await fetch(OLLAMA_CHAT, {
+    const r = await fetch(BACKEND_CHAT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-r1:8b',
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-        options: { num_predict: 25, temperature: 0.8 },
+        message: `¿Qué opinas de que estoy ${activityType || 'trabajando'}?`,
+        mode: gConfig.aiMode,
+        api_token: gConfig.deepseekToken,
       }),
     })
     if (!r.ok) return null
     const d = await r.json()
-    const text = d?.message?.content?.trim() || null
-    if (!text) return null
-    // Clean up think tags if present
-    return text.replace(/<\/?think>/gi, '').replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 60)
+    return d.response?.trim()?.slice(0, 60) || null
   } catch { return null }
 }
 
+// ── Overdue tasks check ────────────────────────────────────
+async function checkOverdueTasks() {
+  try {
+    const r = await fetch('http://127.0.0.1:8000/integrations/clickup/tasks')
+    if (!r.ok) return []
+    const data = await r.json()
+    const tasks = data.tasks || []
+    const now = Date.now()
+    return tasks.filter(t => {
+      if (!t.due_date) return false
+      const due = parseInt(t.due_date)
+      return due < now && t.status?.toLowerCase() !== 'done' && t.status?.toLowerCase() !== 'closed'
+    })
+  } catch { return [] }
+}
+
+// ── ClickUp mentions check ──────────────────────────────────
+async function checkNewMentions() {
+  try {
+    const r = await fetch('http://127.0.0.1:8000/clickup/mentions/check')
+    if (!r.ok) return []
+    const data = await r.json()
+    return data.new_mentions || []
+  } catch { return [] }
+}
+
 function rand(min, max) { return Math.random() * (max - min) + min }
-function pickNext(current) {
-  const others = STATES.filter(s => s !== current)
+
+function pickDefault(current) {
+  const others = DEFAULT_STATES.filter(s => s !== current)
   return others[Math.floor(Math.random() * others.length)]
 }
 
 let gFallbackX = 0
 
+// ── Main App ───────────────────────────────────────────────
 export default function App() {
   const elRef    = useRef(null)
   const bubbleRef = useRef(null)
-  const dotRef   = useRef(null)
-
-  // ── Refs (game-loop state) ───────────────────────────────
-  const stateRef    = useRef('sniff')
+  const stateRef    = useRef('idle')
   const dirRef      = useRef(1)
   const frameRef    = useRef(0)
   const posRef      = useRef({ x: 0, y: 0 })
@@ -120,8 +177,9 @@ export default function App() {
   const hoveredRef  = useRef(false)
   const lastPtrRef  = useRef({ x: 0, y: 0 })
   const readyRef    = useRef(false)
+  const wasDraggedRef = useRef(false)
+  const petClickRef = useRef(null)
 
-  // ── Apply visual state to DOM ────────────────────────────
   const applyVisual = () => {
     const el = elRef.current
     if (!el) return
@@ -134,78 +192,157 @@ export default function App() {
       `${-(SHEET.offsetY + anim.row * SHEET.frameHeight)}px`
     el.style.transform =
       `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
-
-    // Counter-flip speech bubble so text stays readable
     const bubble = bubbleRef.current
     if (bubble) {
-      bubble.style.transform = `scaleX(${mirrored ? -1 : 1})`
+      bubble.style.transform = `translateX(-50%) scaleX(${mirrored ? -1 : 1})`
     }
   }
 
-  const setConnDot = (online) => {
-    const dot = dotRef.current
-    if (!dot) return
-    dot.className = `conn-dot ${online ? 'online' : 'offline'}`
-  }
+  // First launch check — handled by electron main.js (opens config window)
+  useEffect(() => {
+    loadConfig()
+  }, [])
 
-  // ── Speech bubble ────────────────────────────────────────
-  let speechTimer = null
-
-  const showSpeech = (text, duration = 4000) => {
-    const el = bubbleRef.current
-    if (!el) return
-    el.textContent = text
-    el.classList.add('show')
-    if (speechTimer) clearTimeout(speechTimer)
-    speechTimer = setTimeout(() => {
-      el.classList.remove('show')
-    }, duration)
-  }
-
-  // ── Game loop + WebSocket ────────────────────────────────
   useEffect(() => {
     let rafId = null
     let lastTime = 0
     let frameAccum = 0
     let stateTimer = 0
+    let lastKnownActivity = 'unknown'
+    let aiThoughtInterval = 0
+    let overdueCheckInterval = 0
+    let mentionsCheckInterval = 0
+    let lastOverdueNotified = new Set()
+    let lastMentionNotified = new Set()
+    let speechTimer = null
+    let lastReactedType = ''
+    let modeAnimTimer = 30000
+    let pollInterval = null
+    let lastPolledActivity = ''
+
+    const showSpeech = (text, duration = 4000) => {
+      if (!text) return
+      const el = bubbleRef.current
+      if (!el) return
+      el.textContent = text
+      el.classList.add('show')
+      // Longer text = longer display
+      const adjustedDuration = Math.max(duration, text.length * 80)
+      if (speechTimer) clearTimeout(speechTimer)
+      speechTimer = setTimeout(() => { el.classList.remove('show') }, adjustedDuration)
+    }
+
+    const forceAnim = (state, duration, speech) => {
+      stateRef.current = state
+      stateTimer = duration
+      frameAccum = 0
+      frameRef.current = 0
+      if (speech !== undefined) showSpeech(speech)
+    }
+
+    const setConnDot = (online) => {
+      if (online) showSpeech(`${gConfig.assistantName} conectado 🟢`, 2000)
+      else showSpeech(`${gConfig.assistantName} desconectado 🔴`, 4000)
+    }
+
+    // ── Audio Engine ──────────────────────────────────────────
+    const audioEngine = new AudioEngine()
+    audioEngine.init()
+    // Force play a test beep after a short delay (guaranteed to work)
+    const testBeep = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4CAf39/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f38=')
+    testBeep.volume = 0.3
+    setTimeout(() => { testBeep.play().catch(() => {}) }, 500)
+
+    let clickTimer = null
+    petClickRef.current = () => {
+      if (wasDraggedRef.current) return
+      // Double-click detection
+      if (clickTimer) {
+        clearTimeout(clickTimer)
+        clickTimer = null
+        // Double click → config window
+        if (api?.openConfig) api.openConfig().catch(() => {})
+        showSpeech('⚙️ Ajustes', 2000)
+        return
+      }
+      clickTimer = setTimeout(() => {
+        clickTimer = null
+        // Single click → chat
+        if (!api?.openChat) {
+          showSpeech('Chat no disponible 😴', 2000)
+          return
+        }
+        api.openChat().catch(() => {})
+        showSpeech('💬', 1500)
+      }, 300)
+    }
 
     // ── WebSocket ──────────────────────────────────────────
     let ws = null
     let reconnectTimer = null
+    let wasEverConnected = false
 
     function connectWs() {
       if (ws) try { ws.close() } catch {}
       ws = new WebSocket(WS_URL)
-      ws.onopen = () => { setConnDot(true) }
+      ws.onopen = () => { wasEverConnected = true; setConnDot(true) }
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)
+          // ── Audio events ──────────────────────────────────
+          _handleAudioEvent(audioEngine, msg)
+
           if (msg.type === 'event' && msg.data?.event) {
             const ev = msg.data.event
-            const fn = EVENT_SPEECH[ev]
-            if (fn) {
-              showSpeech(fn(msg.data.data))
+            const data = msg.data.data
+            if (data?.activity_type) lastKnownActivity = data.activity_type
+            const currentType = data?.activity_type || ''
+            const isTypeChange = currentType && currentType !== lastReactedType
+
+            if (ev === 'activity.switch' && isTypeChange) {
+              lastReactedType = currentType
+              const speech = EVENT_SPEECH['activity.update']?.(data)
+              const reaction = getReaction(ev, data)
+              if (reaction) forceAnim(reaction.state, reaction.duration, speech)
             }
-            // Force animation reaction
-            const reaction = getReaction(ev, msg.data.data)
-            if (reaction) {
-              stateRef.current = reaction.state
-              stateTimer = reaction.duration > 0
-                ? reaction.duration
-                : rand(STATE_DURATIONS[reaction.state][0], STATE_DURATIONS[reaction.state][1])
-              frameAccum = 0
-              frameRef.current = 0
+            if (ev === 'activity.update' && isTypeChange) {
+              lastReactedType = currentType
+              const reaction = getReaction(ev, data)
+              const speech = EVENT_SPEECH[ev]?.(data)
+              if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            }
+
+            // ── Push notifications from backend ──────────────
+            if (ev === 'clickup.mention') {
+              const text = data?.comment_text
+                ? `📬 ${data.author}: "${data.comment_text.slice(0, 50)}"`
+                : `📬 ${data?.author || 'Alguien'} te escribió en "${(data?.task_name || '').slice(0, 30)}"`
+              forceAnim('jump', 6000, text)
+              audioEngine.play('alerta')
+            }
+            if (ev === 'deadline.overdue') {
+              forceAnim('jump', 5000, `⏰ ¡Tarea vencida! ${(data?.task_name || '').slice(0, 30)}`)
+              audioEngine.play('alerta')
+            }
+            if (ev === 'pomodoro.completed') {
+              const count = data?.session_count || 0
+              forceAnim('jump', 4000, `🍅 ¡Pomodoro #${count} completado! Toma un descanso`)
+              audioEngine.play('ladrido')
+            }
+            if (ev === 'task.started') {
+              forceAnim('run', 3000, `🚀 Empezaste: ${(data?.task_name || '').slice(0, 30)}`)
+              audioEngine.play('ladrido')
+            }
+            if (ev === 'task.completed') {
+              forceAnim('jump', 4000, `✅ ¡Completaste: ${(data?.task_name || '').slice(0, 28)}!`)
+              audioEngine.play('ladrido')
             }
           }
-        } catch { /* malformed msg */ }
+        } catch {}
       }
-      ws.onclose = () => {
-        setConnDot(false)
-        reconnectTimer = setTimeout(connectWs, RECONNECT_MS)
-      }
+      ws.onclose = () => { if (wasEverConnected) setConnDot(false); reconnectTimer = setTimeout(connectWs, RECONNECT_MS) }
       ws.onerror = () => { ws?.close() }
     }
-    connectWs()
 
     // ── Init ───────────────────────────────────────────────
     ;(async () => {
@@ -214,16 +351,96 @@ export default function App() {
         if (api?.getPosition) { const p = await api.getPosition(); posRef.current = { x: p.x ?? 0, y: p.y ?? 0 } }
         if (api?.getScreenSize) { const s = await api.getScreenSize(); screenRef.current = { w: s.width ?? 1920, h: s.height ?? 1080 } }
       } catch {}
-      // Check Ollama
       await checkOllama()
       dirRef.current = Math.random() > 0.5 ? 1 : -1
-      const d = STATE_DURATIONS[stateRef.current]
+      const d = STATE_DURATIONS['idle']
       stateTimer = rand(d[0], d[1])
       readyRef.current = true
       lastTime = performance.now()
       applyVisual()
-      showSpeech('¡Hola! 🐾', 3000)
+      showSpeech(`👋 Soy ${gConfig.assistantName}`, 2500)
+      setTimeout(() => audioEngine.play('ladrido'), 800)
     })()
+
+    // ── Connectivity: use IPC bridge (main process handles WS + HTTP) ──
+    // The main process connects to the backend WebSocket and forwards events via IPC
+    if (api?.onBackendEvent) {
+      api.onBackendEvent((msg) => {
+        if (msg.type === 'connected') {
+          showSpeech(`${gConfig.assistantName} conectado 🟢`, 2000)
+          return
+        }
+        // Handle audio events
+        _handleAudioEvent(audioEngine, msg)
+
+        if (msg.type === 'event' && msg.data?.event) {
+          const ev = msg.data.event
+          const data = msg.data.data
+          if (data?.activity_type) lastKnownActivity = data.activity_type
+          const currentType = data?.activity_type || ''
+          const isTypeChange = currentType && currentType !== lastReactedType
+
+          if (ev === 'activity.switch' && isTypeChange) {
+            lastReactedType = currentType
+            const speech = EVENT_SPEECH['activity.update']?.(data)
+            const reaction = getReaction(ev, data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+          }
+          if (ev === 'activity.update' && isTypeChange) {
+            lastReactedType = currentType
+            const reaction = getReaction(ev, data)
+            const speech = EVENT_SPEECH[ev]?.(data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+          }
+
+          // Push notifications
+          if (ev === 'clickup.mention') {
+            const text = data?.comment_text
+              ? `📬 ${data.author}: "${data.comment_text.slice(0, 50)}"`
+              : `📬 ${data?.author || 'Alguien'} te escribió en "${(data?.task_name || '').slice(0, 30)}"`
+            forceAnim('jump', 6000, text)
+            audioEngine.play('alerta')
+          }
+          if (ev === 'deadline.overdue') {
+            forceAnim('jump', 5000, `⏰ ¡Tarea vencida! ${(data?.task_name || '').slice(0, 30)}`)
+            audioEngine.play('alerta')
+          }
+          if (ev === 'pomodoro.completed') {
+            forceAnim('jump', 4000, `🍅 ¡Pomodoro #${data?.session_count || 0} completado!`)
+            audioEngine.play('ladrido')
+          }
+          if (ev === 'task.started') {
+            forceAnim('run', 3000, `🚀 Empezaste: ${(data?.task_name || '').slice(0, 30)}`)
+            audioEngine.play('ladrido')
+          }
+          if (ev === 'task.completed') {
+            forceAnim('jump', 4000, `✅ ¡Completaste: ${(data?.task_name || '').slice(0, 28)}!`)
+            audioEngine.play('ladrido')
+          }
+        }
+      })
+    }
+
+    // Also use polling as backup for activity state
+    pollInterval = setInterval(async () => {
+      try {
+        const state = api?.backendFetch ? await api.backendFetch('/state') : null
+        if (!state) return
+        const activity = state.current_activity || ''
+        if (activity && activity !== lastPolledActivity && activity !== 'idle') {
+          lastPolledActivity = activity
+          lastKnownActivity = activity
+          // Only trigger animation if IPC bridge hasn't already
+          if (activity !== lastReactedType) {
+            const data = { activity_type: activity }
+            const speech = EVENT_SPEECH['activity.update']?.(data)
+            const reaction = getReaction('activity.update', data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            lastReactedType = activity
+          }
+        }
+      } catch {}
+    }, 5000)
 
     // ── Game loop ──────────────────────────────────────────
     const loop = (now) => {
@@ -233,8 +450,6 @@ export default function App() {
 
       if (!draggingRef.current) {
         const anim = ANIMS[stateRef.current]
-
-        // Animation frame advance
         frameAccum += dt
         while (frameAccum >= anim.msPerFrame) {
           frameAccum -= anim.msPerFrame
@@ -242,7 +457,6 @@ export default function App() {
           frameRef.current = (frameRef.current + step + anim.frames) % anim.frames
         }
 
-        // Movement
         if (anim.speed > 0) {
           const dx = anim.speed * dirRef.current
           let nx = posRef.current.x + dx
@@ -254,16 +468,47 @@ export default function App() {
           else { gFallbackX += dx }
         }
 
-        // State transitions
         stateTimer -= dt
         if (stateTimer <= 0) {
-          const next = pickNext(stateRef.current)
+          const next = pickDefault(stateRef.current)
           const nextAnim = ANIMS[next]
           stateRef.current = next
           const d = STATE_DURATIONS[next]
           stateTimer = rand(d[0], d[1])
           frameAccum = 0
           frameRef.current = frameRef.current % nextAnim.frames
+        }
+
+        modeAnimTimer -= dt
+        if (modeAnimTimer <= 0 && lastReactedType) {
+          const pool = MODE_ANIMS[lastReactedType]
+          if (pool) {
+            const a = pool[Math.floor(Math.random() * pool.length)]
+            forceAnim(a.state, a.duration, null)
+          }
+          modeAnimTimer = 20000 + Math.random() * 30000
+        }
+
+        aiThoughtInterval += dt
+        if (aiThoughtInterval > 180000) {
+          aiThoughtInterval = 0
+          generateThought(lastKnownActivity).then(thought => {
+            if (thought) showSpeech(thought, 5000)
+          })
+        }
+
+        overdueCheckInterval += dt
+        if (overdueCheckInterval > 60000) {
+          overdueCheckInterval = 0
+          // Overdue tasks are now pushed via WebSocket (deadline.overdue event)
+          // No need to poll from frontend
+        }
+
+        mentionsCheckInterval += dt
+        if (mentionsCheckInterval > 120000) {
+          mentionsCheckInterval = 0
+          // Mentions are now pushed via WebSocket (clickup.mention event)
+          // No need to poll from frontend
         }
 
         applyVisual()
@@ -278,19 +523,70 @@ export default function App() {
       if (ws) ws.close()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (speechTimer) clearTimeout(speechTimer)
+      if (pollInterval) clearInterval(pollInterval)
+
     }
   }, [])
 
-  // ── Drag / interact handlers ────────────────────────────
+  // ── Audio event handler (inside useEffect closure) ───────
+  function _handleAudioEvent(engine, msg) {
+    const type = msg.type
+    const data = msg.data || {}
+
+    switch (type) {
+      case 'thought':
+        const tType = data.thought?.type
+        if (tType === 'focus' || tType === 'encouragement') engine.play('ladrido')
+        break
+
+      case 'mood_change':
+        if (data.mood === 'excited') engine.play('ladrido')
+        break
+
+      case 'event':
+        const ev = data.event || ''
+        const evData = data.data || {}
+        if (ev === 'task.completed') engine.play('ladrido')
+        if (ev === 'clickup.mention' || ev === 'deadline.approaching') engine.play('alerta')
+        if (ev === 'behavior.request' && evData.behavior === 'sleep') engine.play('ronquido')
+        break
+
+      case 'behavior.request':
+        if (data.behavior === 'sleep') engine.play('ronquido')
+        break
+    }
+  }
+
   const setInteractive = (val) => { if (!api?.setInteractive) return; api.setInteractive(val).catch(() => {}) }
   const moveWindowBy = (dx, dy) => {
     if (api?.moveBy) { api.moveBy(dx, dy).catch(() => {}); return }
     gFallbackX += dx; posRef.current = { x: gFallbackX, y: posRef.current.y + dy }
   }
+  // ── Mouse tracking for transparent window hit-test ────────
+  // With forward:true, Electron forwards OS mouse events to the renderer as
+  // mousemove even when ignoring. We use this to toggle interactivity.
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!elRef.current) return
+      const rect = elRef.current.getBoundingClientRect()
+      const over = e.clientX >= rect.left && e.clientX <= rect.right &&
+                   e.clientY >= rect.top  && e.clientY <= rect.bottom
+      if (over !== hoveredRef.current) {
+        hoveredRef.current = over
+        if (!draggingRef.current) setInteractive(over)
+      }
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    return () => document.removeEventListener('mousemove', onMouseMove)
+  }, [])
+
   const onPointerEnter = () => { hoveredRef.current = true; setInteractive(true) }
   const onPointerLeave = () => { if (!draggingRef.current) setInteractive(false) }
+
   const onPointerDown = (e) => {
-    if (e.button !== 0) return; draggingRef.current = true
+    if (e.button !== 0) return
+    draggingRef.current = true
+    wasDraggedRef.current = false
     lastPtrRef.current = { x: e.screenX, y: e.screenY }
     setInteractive(true); e.currentTarget.setPointerCapture(e.pointerId)
   }
@@ -298,6 +594,7 @@ export default function App() {
     if (!draggingRef.current) return
     const dx = e.screenX - lastPtrRef.current.x
     const dy = e.screenY - lastPtrRef.current.y
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) wasDraggedRef.current = true
     lastPtrRef.current = { x: e.screenX, y: e.screenY }
     posRef.current = { x: posRef.current.x + dx, y: posRef.current.y + dy }
     moveWindowBy(dx, dy)
@@ -308,50 +605,61 @@ export default function App() {
     if (!hoveredRef.current) setInteractive(false)
   }
 
-  // ── Render ───────────────────────────────────────────────
   return (
-    <div className="stage">
-      <div
-        ref={elRef}
-        className="pet"
-        style={{
-          position: 'relative',
-          width: SHEET.frameWidth,
-          height: SHEET.frameHeight,
-          transform: 'translate(0px, 0px) scaleX(1)',
-          backgroundImage: `url(${SPRITE_URL})`,
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY + 6 * SHEET.frameHeight)}px`,
-          backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
-        }}
-        onPointerEnter={onPointerEnter}
-        onPointerLeave={onPointerLeave}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={stopDrag}
-        onPointerCancel={stopDrag}
-      >
-        <div ref={bubbleRef} className="speech-bubble" />
+      <div className="stage">
+        <div
+          ref={elRef}
+          className="pet"
+          style={{
+            position: 'relative',
+            width: SHEET.frameWidth, height: SHEET.frameHeight,
+            transform: 'translate(0px, 0px) scaleX(1)',
+            backgroundImage: `url(${SPRITE_URL})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY)}px`,
+            backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
+          }}
+          onPointerEnter={onPointerEnter}
+          onPointerLeave={onPointerLeave}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={stopDrag}
+          onPointerCancel={stopDrag}
+          onClick={(e) => petClickRef.current?.(e)}
+        >
+          <div ref={bubbleRef} className="speech-bubble" />
+        </div>
       </div>
-      <div ref={dotRef} className="conn-dot offline" />
-    </div>
   )
 }
 
-// ── Event → Animation reactions (kept outside component) ──
+// ── Event → Animation reactions ────────────────────────────
 function getReaction(eventType, data) {
   const t = (data?.activity_type || '').toLowerCase()
+  const pick = (states) => states[Math.floor(Math.random() * states.length)]
+
   switch (eventType) {
-    case 'activity.update':
-      if (t === 'coding')  return { state: 'jump',     duration: 1500 }
-      if (t === 'browsing') return { state: 'sniffwalk',duration: 2000 }
-      if (t === 'reading' || t === 'design')
-                            return { state: 'sniff',    duration: 2000 }
-      return { state: 'walk', duration: 1500 }
     case 'activity.switch':
-      return { state: 'sniff', duration: 1200 }
-    case 'activity.idle':
-      return { state: 'idle', duration: 4000 }
+    case 'activity.update':
+      if (t === 'coding')
+        return pick([
+          { state: 'jump',  duration: 1500 },
+          { state: 'run',   duration: 2000 },
+          { state: 'walk',  duration: 2500 },
+        ])
+      if (t === 'browsing')
+        return pick([
+          { state: 'sniffwalk', duration: 2000 },
+          { state: 'walk',      duration: 2500 },
+        ])
+      if (t === 'reading' || t === 'design')
+        return pick([
+          { state: 'sniff', duration: 2000 },
+          { state: 'sit',   duration: 3000 },
+        ])
+      if (t === 'communication')
+        return { state: 'sniff', duration: 2000 }
+      return null
     default:
       return null
   }

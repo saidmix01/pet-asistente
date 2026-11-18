@@ -19,6 +19,7 @@ ACTIVITY_MAP: dict[str, str] = {
     # Coding / Development
     "visual studio code": "coding",
     "code": "coding",
+    "Code.exe": "coding",              # Windows VS Code
     "cursor": "coding",
     "vscodium": "coding",
     "windsurf": "coding",
@@ -26,7 +27,14 @@ ACTIVITY_MAP: dict[str, str] = {
     "android studio": "coding",
     "intellij idea": "coding",
     "pycharm": "coding",
+    "pycharm64.exe": "coding",         # Windows PyCharm
     "webstorm": "coding",
+    "webstorm64.exe": "coding",        # Windows WebStorm
+    "notepad++.exe": "coding",          # Windows Notepad++
+    "WindowsTerminal.exe": "coding",    # Windows Terminal
+    "powershell.exe": "coding",
+    "cmd.exe": "coding",
+    "devenv.exe": "coding",             # Windows Visual Studio
     "sublime text": "coding",
     "vim": "coding",
     "neovim": "coding",
@@ -37,7 +45,10 @@ ACTIVITY_MAP: dict[str, str] = {
     "safari": "browsing",
     "google chrome": "browsing",
     "chrome": "browsing",
+    "chrome.exe": "browsing",           # Windows Chrome
+    "msedge.exe": "browsing",            # Windows Edge
     "firefox": "browsing",
+    "firefox.exe": "browsing",           # Windows Firefox
     "brave browser": "browsing",
     "edge": "browsing",
     "opera": "browsing",
@@ -57,7 +68,9 @@ ACTIVITY_MAP: dict[str, str] = {
     # Communication
     "slack": "communication",
     "teams": "communication",
+    "Teams.exe": "communication",        # Windows Teams
     "discord": "communication",
+    "Discord.exe": "communication",       # Windows Discord
     "telegram": "communication",
     "whatsapp": "communication",
     "zoom": "communication",
@@ -75,6 +88,13 @@ ACTIVITY_MAP: dict[str, str] = {
     # Other
     "spotify": "entertainment",
     "music": "entertainment",
+    "explorer.exe": "browsing",          # Windows File Explorer
+    "OUTLOOK.EXE": "communication",       # Windows Outlook
+    "winword.exe": "reading",             # Windows Word
+    "excel.exe": "reading",               # Windows Excel
+    "powerpnt.exe": "reading",            # Windows PowerPoint
+    "taskmgr.exe": "other",               # Windows Task Manager
+    "calculator.exe": "other",            # Windows Calculator
 }
 
 # Window title keywords that override activity type

@@ -38,8 +38,11 @@ class EventStream:
     # ── Client management ─────────────────────────────────────────────
 
     async def connect(self, ws: WebSocket) -> None:
-        await ws.accept()
         self._clients.add(ws)
+        # Capture uvicorn's event loop on first connection
+        if self._loop is None:
+            import asyncio
+            self._loop = asyncio.get_running_loop()
         info(f"WebSocket client connected ({len(self._clients)} total)")
 
         # Send immediate full state snapshot on connect
@@ -84,12 +87,15 @@ class EventStream:
 
     def _schedule_broadcast(self, msg_type: str, data: dict) -> None:
         """Schedule a broadcast on the async event loop thread-safe."""
-        loop = self._loop or asyncio.get_event_loop()
-        if loop.is_closed():
+        loop = self._loop
+        if loop is None or loop.is_closed():
             return
-        asyncio.run_coroutine_threadsafe(
-            self._broadcast(msg_type, data), loop
-        )
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast(msg_type, data), loop
+            )
+        except RuntimeError:
+            pass
 
     async def _broadcast(self, msg_type: str, data: dict) -> None:
         """Send a message to every connected client."""
@@ -98,6 +104,11 @@ class EventStream:
         for ws in self._clients:
             try:
                 await ws.send_text(payload)
+            except RuntimeError as e:
+                if "not connected" in str(e) or "close" in str(e).lower():
+                    stale.append(ws)
+                else:
+                    stale.append(ws)
             except Exception:
                 stale.append(ws)
         for ws in stale:
