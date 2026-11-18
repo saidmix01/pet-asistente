@@ -41,7 +41,6 @@ class Processor:
         }
 
     def _on_activity(self, event: str, data: dict) -> None:
-        info(f"Processing activity.update: {data.get('activity_type')}")
         # 1. Update live state
         self._state.handle_event(event, data)
         # 2. Push to event stream (→ WebSocket clients)
@@ -58,6 +57,5 @@ class Processor:
         self._stream.on_event(event, data)
 
     def _on_idle(self, event: str, data: dict) -> None:
-        info(f"Idle event")
         self._state.handle_event(event, data)
         self._stream.on_event(event, data)

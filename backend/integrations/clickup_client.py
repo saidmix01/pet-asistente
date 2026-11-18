@@ -14,11 +14,19 @@ from typing import Any
 # macOS fix: create an SSL context that uses certifi when available
 # This avoids CERTIFICATE_VERIFY_FAILED on systems with broken cert bundles
 def _ssl_context() -> ssl.SSLContext:
+    """Create SSL context. On Windows frozen exe, rely on system cert store."""
+    import sys
     ctx = ssl.create_default_context()
+
+    # In PyInstaller on Windows, DON'T load certifi — use Windows system certs
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        return ctx
+
+    # In dev or non-Windows, try certifi for extra compatibility
     try:
         import certifi
         ctx.load_verify_locations(certifi.where())
-    except ImportError:
+    except (ImportError, Exception):
         pass
     return ctx
 

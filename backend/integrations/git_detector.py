@@ -155,13 +155,16 @@ class GitDetector:
     def _run_git(self, repo_path: Path, *args: str) -> str | None:
         """Run a git command in the given repo directory."""
         try:
-            result = subprocess.run(
-                ["git", *args],
-                cwd=str(repo_path),
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
+            kwargs = {
+                "cwd": str(repo_path),
+                "capture_output": True,
+                "text": True,
+                "timeout": 5,
+            }
+            # Hide console window on Windows
+            if os.name == 'nt':
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(["git", *args], **kwargs)
             if result.returncode == 0:
                 return result.stdout
             return None

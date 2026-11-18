@@ -4,6 +4,7 @@ FastAPI routes for the Work Assistant API.
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from services.activity_service import ActivityService
+from services.logger import info
 from core.system_state import SystemState
 from core.event_stream import EventStream
 
@@ -22,7 +23,22 @@ SYSTEM_STATUS = {"status": "active"}
 
 @router.get("/")
 async def system_status():
+    info("HTTP GET / — health check received")
     return {"system": "Work Assistant Core", **SYSTEM_STATUS}
+
+
+@router.post("/test-notification")
+async def test_notification(event_type: str = "clickup.mention", message: str = "Test notification"):
+    """Send a test notification through WebSocket to verify the pet reacts."""
+    if event_stream is None:
+        return {"error": "EventStream not initialized"}
+    event_stream.on_event(event_type, {
+        "task_name": message,
+        "task_id": "test",
+        "author": "Test",
+        "comment_text": message,
+    })
+    return {"sent": True, "event": event_type, "message": message}
 
 
 @router.get("/state")

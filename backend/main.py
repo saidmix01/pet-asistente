@@ -46,13 +46,19 @@ def main() -> None:
     # Event system
     bus = EventBus()
 
+    # ── Verify ClickUp connection on startup ─────────────────────────
+    from integrations.clickup_config import load_token
+    _cu_token = load_token()
+    if _cu_token:
+        info(f"ClickUp token found (length={len(_cu_token)})")
+    else:
+        info("ClickUp token NOT found — notifications disabled")
+
     # Live system state
     state = SystemState()
 
     # Event stream (WebSocket bridge)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    stream = EventStream(bus, state, loop=loop)
+    stream = EventStream(bus, state)
 
     # ── Real activity monitoring (cross-platform) ────────────────────
     from core.platform_detector import CrossPlatformTracker, get_os
@@ -71,7 +77,7 @@ def main() -> None:
 
     # ── Task Tracker (auto-detect ClickUp status changes) ────────────
     from integrations.task_tracker import TaskTracker
-    task_tracker = TaskTracker(poll_interval=60, time_tracker=time_tracker)
+    task_tracker = TaskTracker(poll_interval=60, time_tracker=time_tracker, event_stream=stream)
 
     # ── Git Detector ──────────────────────────────────────────────────
     from integrations.git_detector import GitDetector
@@ -86,6 +92,68 @@ def main() -> None:
     tracker.start()
     task_tracker.start()
     auto_report.start()
+
+    # ── Background notification loop (pomodoro + clickup mentions) ────
+    from integrations.pomodoro import check_pomodoro
+    from integrations.clickup_mentions import MentionTracker
+    from integrations.due_soon import get_due_soon_tasks
+
+    mention_tracker = MentionTracker()
+
+    import time as time_module
+
+    def notification_loop():
+        """Periodic checks for pomodoro completion, mentions, and overdue tasks."""
+        # Wait for uvicorn's event loop to be available
+        while stream._loop is None:
+            time_module.sleep(1)
+
+        last_mention_check = 0
+        last_overdue_check = 0
+        MENTION_INTERVAL = 60   # seconds (check every minute)
+        OVERDUE_INTERVAL = 300  # seconds
+
+        while True:
+            time_module.sleep(10)
+            now = time_module.time()
+
+            # Check pomodoro completion
+            try:
+                result = check_pomodoro()
+                if result and result.get("completed"):
+                    stream.on_event("pomodoro.completed", {
+                        "session_count": result["session_count"],
+                        "suggest": result["suggest"],
+                    })
+            except Exception:
+                pass
+
+            # Check ClickUp mentions periodically
+            if now - last_mention_check > MENTION_INTERVAL:
+                last_mention_check = now
+                try:
+                    new_mentions = mention_tracker.check_new_mentions()
+                    for m in new_mentions:
+                        stream.on_event("clickup.mention", m)
+                except Exception:
+                    pass
+
+            # Check overdue tasks periodically
+            if now - last_overdue_check > OVERDUE_INTERVAL:
+                last_overdue_check = now
+                try:
+                    overdue = get_due_soon_tasks(hours=0)
+                    for t in overdue:
+                        stream.on_event("deadline.overdue", {
+                            "task_id": t.get("id"),
+                            "task_name": t.get("name"),
+                            "due_date": t.get("due_date"),
+                        })
+                except Exception:
+                    pass
+
+    notif_thread = threading.Thread(target=notification_loop, daemon=True)
+    notif_thread.start()
 
     # ── FastAPI ──────────────────────────────────────────────────────
     # Inject services into routes
@@ -106,12 +174,9 @@ def main() -> None:
     app = create_app(state=state, stream=stream)
 
     # ── Start heartbeat loop on the same event loop ───────────────────
-    def run_async_loop():
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(stream.heartbeat_loop(interval=5.0))
-
-    hb_thread = threading.Thread(target=run_async_loop, daemon=True)
-    hb_thread.start()
+    # Heartbeat will be started as a background task within uvicorn's event loop
+    # via the FastAPI lifespan. We inject the stream into the app state.
+    app.state.event_stream = stream
 
     info("Work Assistant Core v1.2 running on http://127.0.0.1:8000")
     info("WebSocket endpoint: ws://127.0.0.1:8000/ws/state")
@@ -123,11 +188,25 @@ def main() -> None:
     info("Pomodoro timer ready")
     info("Auto Report will generate at 4:00 PM")
 
+    # Verify WebSocket support before starting
+    try:
+        import wsproto
+        info(f"wsproto available: {wsproto.__version__}")
+    except ImportError:
+        info("WARNING: wsproto NOT available — WebSocket will NOT work!")
+        try:
+            import websockets
+            info(f"websockets available: {websockets.__version__}")
+        except ImportError:
+            info("WARNING: websockets NOT available either!")
+
     uvicorn.run(
         app,
         host="127.0.0.1",
         port=8000,
         log_level="warning",
+        ws="wsproto",
+        http="h11",
     )
 
 

@@ -10,12 +10,13 @@ from integrations.clickup_db import get_cached_tasks
 router = APIRouter(prefix="/integrations/clickup", tags=["clickup"])
 
 
-@router.get("/tasks-due-soon")
-async def tasks_due_soon(hours: float = 2.0):
+def get_due_soon_tasks(hours: float = 2.0) -> list[dict]:
     """
-    Return tasks with due_date within the next N hours (default 2h).
-    Also includes overdue tasks.
+    Return tasks with due_date within the next N hours.
+    Also includes overdue tasks (hours=0 returns only overdue).
+    Usable from both API endpoints and background threads.
     """
+    from datetime import datetime, timezone
     tasks = get_cached_tasks(limit=200)
     now = datetime.now(timezone.utc).timestamp() * 1000
     soon_limit = now + (hours * 3600 * 1000)
@@ -30,7 +31,6 @@ async def tasks_due_soon(hours: float = 2.0):
             due_ms = int(due_str)
         except (ValueError, TypeError):
             continue
-        # Overdue or due within hours
         if due_ms <= soon_limit:
             is_overdue = due_ms < now
             remaining_h = round((due_ms - now) / 3600 / 1000, 1) if not is_overdue else 0
@@ -45,6 +45,16 @@ async def tasks_due_soon(hours: float = 2.0):
             })
 
     due_soon.sort(key=lambda x: x.get("remaining_hours", 0) if not x["overdue"] else -999)
+    return due_soon
+
+
+@router.get("/tasks-due-soon")
+async def tasks_due_soon(hours: float = 2.0):
+    """
+    Return tasks with due_date within the next N hours (default 2h).
+    Also includes overdue tasks.
+    """
+    due_soon = get_due_soon_tasks(hours)
     return {"count": len(due_soon), "tasks": due_soon}
 
 

@@ -30,7 +30,6 @@ class ActivityService:
         conn.commit()
         row_id = cursor.lastrowid
         conn.close()
-        info(f"Saved activity #{row_id}: {record['activity_type']}")
         return row_id
 
     # ── Queries ───────────────────────────────────────────────────────

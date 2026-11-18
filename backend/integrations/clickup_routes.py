@@ -32,6 +32,7 @@ async def get_status():
 
 
 @router.post("/connect")
+@router.post("/connect")
 async def connect(req: ConnectRequest):
     """Connect to ClickUp with a personal API token."""
     if clickup_service is None:
@@ -42,6 +43,8 @@ async def connect(req: ConnectRequest):
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
+        from services.logger import error
+        error(f"ClickUp connect failed: {type(e).__name__}: {e}")
         raise HTTPException(500, f"Connection failed: {e}")
 
 

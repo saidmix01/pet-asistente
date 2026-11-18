@@ -27,6 +27,7 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
     mode: str = "local"
     api_token: str = ""
+    assistant_name: str = "Pet"
 
 
 class ChatResponse(BaseModel):
@@ -49,6 +50,9 @@ async def chat_send(req: ChatRequest):
     # Save user message
     save_message(req.session_id, "user", req.message)
 
+    # Check if user wants to save something to memory
+    _check_memory_request(req.message)
+
     # Build context from recent history
     recent = get_history(req.session_id, limit=20)
     messages = []
@@ -57,11 +61,17 @@ async def chat_send(req: ChatRequest):
 
     # Add system context
     today_info = _get_today_context()
-    system = f"""Eres {_get_assistant_name()}, una mascota virtual asistente de trabajo.
+    memory_info = _get_memory_context()
+    assistant_name = req.assistant_name or _get_assistant_name()
+    system = f"""Eres {assistant_name}, una mascota virtual asistente de trabajo.
 Hoy es {date.today().isoformat()}.
-Contexto del día: {today_info}
-Respondé frases cortas (máximo 20 palabras), amigables, en español.
-Si preguntan por tareas, proyectos o tiempo, usá la información disponible."""
+Contexto del día:
+{today_info}
+{memory_info}
+Respondé de forma concisa y amigable, en español.
+Si preguntan por tareas, proyectos, qué tengo para hoy, o tiempo trabajado, listá la información disponible.
+Si el usuario te pide que recuerdes algo, confirmá que lo guardaste.
+Máximo 100 palabras por respuesta."""
 
     messages.insert(0, {"role": "system", "content": system})
 
@@ -73,7 +83,7 @@ Si preguntan por tareas, proyectos o tiempo, usá la información disponible."""
         )
         response = "😶"
         if result and result.get("message", {}).get("content"):
-            response = result["message"]["content"].replace("</think>", "").replace("<think>", "").strip()[:150]
+            response = result["message"]["content"].replace("</think>", "").replace("<think>", "").strip()[:500]
 
         # Save assistant response
         save_message(req.session_id, "assistant", response)
@@ -107,26 +117,82 @@ async def chat_clear(session_id: str | None = None):
 
 def _get_assistant_name() -> str:
     try:
-        import json, os
-        cfg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pet-config.json")
-        if os.path.exists(cfg_path):
-            cfg = json.load(open(cfg_path))
-            return cfg.get("assistantName", "Pet")
+        from services.config_store import get_assistant_name
+        return get_assistant_name()
     except:
-        pass
-    return "Pet"
+        return "Pet"
+
+
+def _get_memory_context() -> str:
+    """Get pet memory summary for AI context."""
+    try:
+        from services.pet_memory import get_memory_summary
+        summary = get_memory_summary(limit=10)
+        return summary if summary else ""
+    except:
+        return ""
+
+
+def _check_memory_request(message: str) -> None:
+    """Detect if user wants the pet to remember something and save it."""
+    msg = message.lower().strip()
+    triggers = ["recuerda que", "recordá que", "acuerdate que", "acordate que",
+                "guarda esto", "guardá esto", "no olvides que", "anota que", "anotá que"]
+    for trigger in triggers:
+        if trigger in msg:
+            # Extract what to remember (everything after the trigger)
+            idx = msg.index(trigger) + len(trigger)
+            content = message[idx:].strip()
+            if content:
+                from services.pet_memory import remember
+                remember(content)
+            break
 
 
 def _get_today_context() -> str:
-    """Build a summary of today's activity for AI context."""
+    """Build a detailed summary of today's activity for AI context."""
     parts = []
 
-    # Active tasks
+    # Active tasks with details
+    try:
+        from integrations.clickup_db import get_cached_tasks
+        tasks = get_cached_tasks(limit=100)
+        pending = [t for t in tasks if (t.get("status") or "").lower() not in ("done", "closed", "completed")]
+
+        if pending:
+            # Group by status
+            in_progress = [t for t in pending if (t.get("status") or "").lower() in ("in progress", "doing", "in review")]
+            todo = [t for t in pending if (t.get("status") or "").lower() in ("to do", "open", "todo")]
+            overdue = []
+
+            from datetime import datetime, timezone
+            now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            for t in pending:
+                due = t.get("due_date")
+                if due:
+                    try:
+                        if int(due) < now_ms:
+                            overdue.append(t)
+                    except:
+                        pass
+
+            if in_progress:
+                task_list = ", ".join(f'"{t["name"]}" ({t.get("project_name", "")})'  for t in in_progress[:5])
+                parts.append(f"En progreso: {task_list}")
+            if overdue:
+                task_list = ", ".join(f'"{t["name"]}"' for t in overdue[:3])
+                parts.append(f"VENCIDAS: {task_list}")
+            if todo:
+                parts.append(f"Pendientes: {len(todo)} tareas")
+    except:
+        pass
+
+    # Time tracking
     if time_tracker:
         try:
             projects = time_tracker.get_project_time_summary()
             if projects:
-                parts.append(f"Proyectos: {', '.join(f'{k} ({round(v/60)}m)' for k, v in projects.items())}")
+                parts.append(f"Tiempo hoy: {', '.join(f'{k} ({round(v/60)}m)' for k, v in projects.items())}")
         except:
             pass
 
@@ -135,19 +201,8 @@ def _get_today_context() -> str:
         git = GitDetector()
         activity = git.get_git_summary()
         if activity:
-            repos = [a["project"] for a in activity]
+            repos = [a["project"] for a in activity[:3]]
             parts.append(f"Git: {', '.join(repos)}")
-    except:
-        pass
-
-    # Due tasks
-    try:
-        from integrations.clickup_db import get_cached_tasks
-        tasks = get_cached_tasks(limit=100)
-        pending = [t for t in tasks if (t.get("status") or "").lower() not in ("done", "closed")]
-        due = [t for t in pending if t.get("due_date")]
-        if due:
-            parts.append(f"Tareas por vencer: {len(due)}")
     except:
         pass
 
@@ -156,8 +211,8 @@ def _get_today_context() -> str:
         from integrations.clickup_mentions import get_mentions_tracker
         mentions = get_mentions_tracker().get_recent_mentions_summary(limit=3)
         if mentions:
-            parts.append(f"Menciones recientes: {mentions}")
+            parts.append(f"Menciones recientes:\n{mentions}")
     except:
         pass
 
-    return ". ".join(parts) if parts else "Sin datos registrados hoy"
+    return "\n".join(parts) if parts else "Sin datos registrados hoy"

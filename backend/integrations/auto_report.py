@@ -5,6 +5,7 @@ Combines: TaskTracker data + Git activity + Daily Log entries.
 
 import os
 import json
+import sys
 import time
 import threading
 from datetime import datetime, timezone, date
@@ -14,7 +15,14 @@ from integrations.git_detector import GitDetector
 from integrations.task_tracker import TaskTracker
 from services.logger import info, warning, error
 
-REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "daily_reports")
+
+def _get_data_dir() -> str:
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        base = os.environ.get('APPDATA', os.path.expanduser('~'))
+        return os.path.join(base, 'pet-asistente', 'data')
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+REPORTS_DIR = os.path.join(_get_data_dir(), "daily_reports")
 
 
 class AutoReport:
@@ -45,7 +53,11 @@ class AutoReport:
             now = datetime.now()
             # At 4:00 PM generate the report (check within 60s window)
             if now.hour == 16 and now.minute == 0:
-                self.generate_today_report()
+                # Only generate if not already generated today
+                today = date.today().isoformat()
+                filepath = os.path.join(REPORTS_DIR, f"report_{today}.json")
+                if not os.path.exists(filepath):
+                    self.generate_today_report()
                 # Sleep 2 minutes to avoid regenerating
                 time.sleep(120)
             time.sleep(60)

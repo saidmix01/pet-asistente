@@ -10,9 +10,9 @@
   },
   "scripts": {
     "install:all": "cd desktop && npm install && cd renderer && npm install",
-    "dev:backend": "cd backend && python3 main.py",
+    "dev:backend": "cd backend && python main.py",
     "dev:desktop": "cd desktop && npm run dev",
-    "dev": "concurrently -n backend,desktop \"npm run dev:backend\" \"npm run dev:desktop\"",
+    "dev": "npm run dev:desktop",
     "build:renderer": "cd desktop && npm run build:renderer",
     "build:backend": "cd backend && pyinstaller --onefile --name asistente-core --add-data \".venv/lib/python3.14/site-packages:./\" main.py",
     "build": "npm run build:renderer && npm run build:backend",

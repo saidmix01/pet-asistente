@@ -23,6 +23,7 @@ ACTIVITY_MAP: dict[str, str] = {
     "neovim": "coding", "iterm2": "coding", "terminal": "coding",
     "warp": "coding", "windows terminal": "coding", "powershell": "coding",
     "cmd": "coding", "gnome-terminal": "coding", "konsole": "coding",
+    "kiro": "coding",
     "safari": "browsing", "google chrome": "browsing", "chrome": "browsing",
     "firefox": "browsing", "brave browser": "browsing", "edge": "browsing",
     "opera": "browsing", "arc": "browsing", "zen browser": "browsing",
@@ -86,15 +87,7 @@ def get_idle_time() -> float:
                     ns = float(ns_str.replace("ms", "")) * 1_000_000 if "ms" in ns_str else float(ns_str)
                     return ns / 1_000_000_000
         elif os_name == "windows":
-            result = subprocess.run(
-                ["powershell", "-Command", "(Get-CimInstance Win32_Desktop).LastInputTime -as [DateTime]"],
-                capture_output=True, text=True, timeout=3,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                import datetime as dt
-                last = dt.datetime.fromisoformat(result.stdout.strip())
-                delta = dt.datetime.now() - last
-                return delta.total_seconds()
+            return _windows_idle_time()
         elif os_name == "linux":
             result = subprocess.run(
                 ["xprintidle"],
@@ -104,6 +97,25 @@ def get_idle_time() -> float:
                 return float(result.stdout.strip()) / 1000
     except Exception:
         pass
+    return 0.0
+
+
+def _windows_idle_time() -> float:
+    """Get idle time on Windows using ctypes (fast, no PowerShell)."""
+    import ctypes
+    import ctypes.wintypes
+
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", ctypes.wintypes.UINT),
+            ("dwTime", ctypes.wintypes.DWORD),
+        ]
+
+    lii = LASTINPUTINFO()
+    lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+        millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+        return millis / 1000.0
     return 0.0
 
 
@@ -143,34 +155,39 @@ def _macos_active_window() -> tuple[str | None, str | None]:
 
 
 def _windows_active_window() -> tuple[str | None, str | None]:
-    """Get active window on Windows via PowerShell."""
-    script = """
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public class WinAPI {
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-}
-"@
-$hwnd = [WinAPI]::GetForegroundWindow()
-$sb = New-Object System.Text.StringBuilder 256
-[WinAPI]::GetWindowText($hwnd, $sb, 256)
-$title = $sb.ToString()
-$pid = 0
-[WinAPI]::GetWindowThreadProcessId($hwnd, [ref]$pid)
-$proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-$app = if ($proc) { $proc.ProcessName } else { "unknown" }
-Write-Output "$app|||$title"
-"""
-    result = subprocess.run(["powershell", "-NoProfile", "-Command", script],
-                            capture_output=True, text=True, timeout=5)
-    if result.returncode == 0 and "|||" in result.stdout:
-        parts = result.stdout.strip().split("|||", 1)
-        return parts[0].strip(), parts[1].strip() if len(parts) > 1 else None
-    return None, None
+    """Get active window on Windows using ctypes (fast, no PowerShell)."""
+    import ctypes
+    import ctypes.wintypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    psapi = ctypes.windll.psapi
+
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return None, None
+
+    # Get window title
+    length = user32.GetWindowTextLengthW(hwnd) + 1
+    buf = ctypes.create_unicode_buffer(length)
+    user32.GetWindowTextW(hwnd, buf, length)
+    window_title = buf.value or None
+
+    # Get process name
+    pid = ctypes.wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+
+    PROCESS_QUERY_INFORMATION = 0x0400
+    PROCESS_VM_READ = 0x0010
+    handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid.value)
+    app_name = "unknown"
+    if handle:
+        buf = ctypes.create_unicode_buffer(260)
+        if psapi.GetModuleBaseNameW(handle, None, buf, 260):
+            app_name = buf.value.replace(".exe", "")
+        kernel32.CloseHandle(handle)
+
+    return app_name, window_title
 
 
 def _linux_active_window() -> tuple[str | None, str | None]:

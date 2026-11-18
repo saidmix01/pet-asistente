@@ -15,11 +15,11 @@ body {
   place-items: center;
   place-content: center;
   height: 100vh;
-  overflow: hidden;
+  overflow: auto;
 }
 .container {
-  width: 380px;
-  padding: 28px 32px;
+  width: 400px;
+  padding: 24px 32px;
 }
 h2 {
   margin: 0 0 4px 0;
@@ -28,12 +28,23 @@ h2 {
   color: #fff;
 }
 .subtitle {
-  margin: 0 0 24px 0;
+  margin: 0 0 20px 0;
   font-size: 12px;
   text-align: center;
   color: #999;
 }
-.field { margin-bottom: 18px; }
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #536dfe;
+  margin: 18px 0 10px 0;
+  padding-top: 14px;
+  border-top: 1px solid #2a2a4e;
+}
+.section-title:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+.field { margin-bottom: 14px; }
 .field label {
   display: block;
   font-size: 12px;
@@ -48,7 +59,7 @@ h2 {
   border-radius: 8px;
   background: #16213e;
   color: #eee;
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
 }
@@ -83,10 +94,19 @@ h2 {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 6px;
+  margin-top: 10px;
 }
 .btn:hover { background: #3d5afe; }
 .btn:disabled { opacity: 0.5; cursor: default; }
+.clickup-status {
+  display: inline-block;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+.clickup-status.connected { background: #1b5e20; color: #a5d6a7; }
+.clickup-status.disconnected { background: #4a1010; color: #ef9a9a; }
 .status { text-align: center; font-size: 11px; color: #888; margin-top: 12px; }
 </style>
 </head>
@@ -95,10 +115,14 @@ h2 {
   <h2>🐾 Configuración</h2>
   <p class="subtitle">Personalizá tu asistente virtual</p>
 
+  <div class="section-title">General</div>
+
   <div class="field">
     <label>Nombre del asistente</label>
     <input type="text" id="assistantName" placeholder="Ej: Pet, Jarvis..." maxlength="20">
   </div>
+
+  <div class="section-title">Inteligencia Artificial</div>
 
   <div class="field">
     <label>Modo de IA</label>
@@ -122,6 +146,14 @@ h2 {
     <span class="hint">Obtenelo en platform.deepseek.com</span>
   </div>
 
+  <div class="section-title">ClickUp <span class="clickup-status disconnected" id="clickupStatus">desconectado</span></div>
+
+  <div class="field">
+    <label>Token de ClickUp (API Personal)</label>
+    <input type="password" id="clickupToken" placeholder="pk_...">
+    <span class="hint">Settings → Apps → API Token en app.clickup.com</span>
+  </div>
+
   <button class="btn" id="saveBtn">💾 Guardar</button>
   <div class="status" id="status"></div>
 </div>
@@ -132,31 +164,71 @@ const modeLocal = document.getElementById('modeLocal')
 const modeRemote = document.getElementById('modeRemote')
 const tokenField = document.getElementById('tokenField')
 const tokenInput = document.getElementById('deepseekToken')
+const clickupTokenInput = document.getElementById('clickupToken')
+const clickupStatusEl = document.getElementById('clickupStatus')
 const saveBtn = document.getElementById('saveBtn')
 const statusEl = document.getElementById('status')
 
+// Check ClickUp status
+async function checkClickUp() {
+  try {
+    const r = await fetch('http://127.0.0.1:8000/integrations/clickup/status')
+    const d = await r.json()
+    if (d.connected) {
+      clickupStatusEl.textContent = 'conectado ✓'
+      clickupStatusEl.className = 'clickup-status connected'
+    } else {
+      clickupStatusEl.textContent = 'desconectado'
+      clickupStatusEl.className = 'clickup-status disconnected'
+    }
+  } catch {
+    clickupStatusEl.textContent = 'backend offline'
+    clickupStatusEl.className = 'clickup-status disconnected'
+  }
+}
+
 // Load current config
 async function loadConfig() {
+  let cfg = null
+
+  // Try Electron config first
   try {
     if (window.pet?.getConfig) {
-      const cfg = await window.pet.getConfig()
-      if (cfg) {
-        nameInput.value = cfg.assistantName || 'Pet'
-        if (cfg.aiMode === 'remote') {
-          document.querySelector('input[name="aiMode"][value="remote"]').checked = true
-          modeRemote.classList.add('active')
-          modeLocal.classList.remove('active')
-          tokenField.style.display = 'block'
-        } else {
-          document.querySelector('input[name="aiMode"][value="local"]').checked = true
-          modeLocal.classList.add('active')
-          modeRemote.classList.remove('active')
-          tokenField.style.display = 'none'
-        }
-        if (cfg.deepseekToken) tokenInput.value = cfg.deepseekToken
-      }
+      cfg = await window.pet.getConfig()
     }
   } catch {}
+
+  // If no Electron config, try backend SQLite
+  if (!cfg || !cfg.assistantName || cfg.assistantName === 'Pet') {
+    try {
+      const r = await fetch('http://127.0.0.1:8000/config')
+      if (r.ok) {
+        const backendCfg = await r.json()
+        if (backendCfg.assistantName && backendCfg.assistantName !== 'Pet') {
+          cfg = { ...cfg, ...backendCfg }
+        }
+      }
+    } catch {}
+  }
+
+  if (cfg) {
+    nameInput.value = cfg.assistantName || 'Pet'
+    if (cfg.aiMode === 'remote') {
+      document.querySelector('input[name="aiMode"][value="remote"]').checked = true
+      modeRemote.classList.add('active')
+      modeLocal.classList.remove('active')
+      tokenField.style.display = 'block'
+    } else {
+      document.querySelector('input[name="aiMode"][value="local"]').checked = true
+      modeLocal.classList.add('active')
+      modeRemote.classList.remove('active')
+      tokenField.style.display = 'none'
+    }
+    if (cfg.deepseekToken) tokenInput.value = cfg.deepseekToken
+    if (cfg.clickupToken) clickupTokenInput.value = cfg.clickupToken
+  }
+
+  checkClickUp()
 }
 
 // Mode toggle
@@ -171,20 +243,67 @@ document.querySelectorAll('input[name="aiMode"]').forEach(el => {
 
 // Save
 saveBtn.addEventListener('click', async () => {
+  const clickupToken = clickupTokenInput.value.trim()
   const cfg = {
     assistantName: nameInput.value.trim() || 'Pet',
     aiMode: document.querySelector('input[name="aiMode"]:checked')?.value || 'local',
     deepseekToken: tokenInput.value.trim(),
+    clickupToken: clickupToken,
     firstLaunch: false,
   }
   saveBtn.disabled = true
   saveBtn.textContent = 'Guardando...'
+  statusEl.textContent = ''
+
   try {
+    // Save general config via Electron
     if (window.pet?.saveConfig) await window.pet.saveConfig(cfg)
     if (window.pet?.markConfigured) await window.pet.markConfigured()
-    statusEl.textContent = '✅ Guardado'
-    statusEl.style.color = '#4caf50'
-    setTimeout(() => window.close(), 1500)
+
+    // Save config to backend SQLite (persistent across reinstalls)
+    try {
+      await fetch('http://127.0.0.1:8000/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      }).catch(() => {})
+    } catch {}
+
+    // Connect ClickUp if token provided
+    if (clickupToken) {
+      try {
+        // Check if already connected first
+        const statusR = await fetch('http://127.0.0.1:8000/integrations/clickup/status')
+        const statusD = await statusR.json()
+        if (statusD.connected) {
+          clickupStatusEl.textContent = 'conectado ✓'
+          clickupStatusEl.className = 'clickup-status connected'
+        } else {
+          // Not connected, try to connect
+          const r = await fetch('http://127.0.0.1:8000/integrations/clickup/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: clickupToken }),
+          })
+          if (r.ok) {
+            clickupStatusEl.textContent = 'conectado ✓'
+            clickupStatusEl.className = 'clickup-status connected'
+            fetch('http://127.0.0.1:8000/integrations/clickup/sync', { method: 'POST' }).catch(() => {})
+          } else {
+            const err = await r.json().catch(() => ({}))
+            statusEl.textContent = `⚠️ ClickUp: ${err.detail || 'error de conexión'}`
+            statusEl.style.color = '#ffc107'
+          }
+        }
+      } catch {
+        statusEl.textContent = '⚠️ No se pudo conectar a ClickUp (backend offline?)'
+        statusEl.style.color = '#ffc107'
+      }
+    }
+
+    statusEl.textContent = statusEl.textContent || '✅ Guardado'
+    if (!statusEl.style.color || statusEl.style.color === '') statusEl.style.color = '#4caf50'
+    setTimeout(() => window.close(), 2000)
   } catch {
     statusEl.textContent = '❌ Error al guardar'
     statusEl.style.color = '#ff5252'

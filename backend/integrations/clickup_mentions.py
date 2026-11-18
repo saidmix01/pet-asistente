@@ -13,7 +13,15 @@ from integrations.clickup_config import load_token
 from integrations.clickup_db import get_cached_tasks
 from services.logger import info, warning, error
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+import sys
+
+def _get_data_dir() -> str:
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        base = os.environ.get('APPDATA', os.path.expanduser('~'))
+        return os.path.join(base, 'pet-asistente', 'data')
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+DATA_DIR = _get_data_dir()
 STATE_FILE = os.path.join(DATA_DIR, "mentions_state.json")
 
 
@@ -66,6 +74,8 @@ class MentionTracker:
             checked_count = 0
 
             for task in tasks:
+                if not isinstance(task, dict):
+                    continue
                 task_id = task.get("id")
                 if not task_id:
                     continue
@@ -77,20 +87,24 @@ class MentionTracker:
                     continue
 
                 for comment in comments:
-                    created = int(comment.get("date", 0))
+                    if not isinstance(comment, dict):
+                        continue
+                    created = int(comment.get("date", 0) or 0)
                     resolved = comment.get("resolved", False)
 
                     # Only new, unresolved comments
                     if created > last_checked and not resolved:
                         comment_id = comment.get("id", "")
                         if comment_id not in self._state.get("notified_ids", []):
+                            user = comment.get("user") or {}
+                            author = user.get("username", "Alguien") if isinstance(user, dict) else "Alguien"
                             new_mentions.append({
                                 "id": comment_id,
                                 "task_id": task_id,
                                 "task_name": task.get("name", "Sin nombre"),
                                 "comment_text": comment.get("comment_text", ""),
                                 "created": created,
-                                "author": comment.get("user", {}).get("username", "Alguien"),
+                                "author": author,
                             })
 
             # Update state

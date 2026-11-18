@@ -26,7 +26,7 @@ class TaskTracker:
     and auto-registers daily log entries.
     """
 
-    def __init__(self, poll_interval: int = 60, time_tracker=None) -> None:
+    def __init__(self, poll_interval: int = 60, time_tracker=None, event_stream=None) -> None:
         self._client: ClickUpClient | None = None
         self._user_id: str | None = None
         self._team_id: str | None = None
@@ -34,6 +34,7 @@ class TaskTracker:
         self._running = False
         self._thread = None
         self._time_tracker = time_tracker
+        self._event_stream = event_stream
 
         # Track last known states per task ID
         self._last_states: dict[str, str] = {}
@@ -177,6 +178,21 @@ class TaskTracker:
     ) -> None:
         info(f"Task status changed: {task_name} ({old_status} → {new_status})")
 
+        # Push notification via WebSocket
+        if self._event_stream:
+            if new_status in ACTIVE_STATUSES:
+                self._event_stream.on_event("task.started", {
+                    "task_id": task_id,
+                    "task_name": task_name,
+                    "status": new_status,
+                })
+            elif new_status in COMPLETED_STATUSES:
+                self._event_stream.on_event("task.completed", {
+                    "task_id": task_id,
+                    "task_name": task_name,
+                    "status": new_status,
+                })
+
         today = datetime.now(timezone.utc).date().isoformat()
         project = task.get("project", {}) or {}
         project_name = project.get("name", "") if isinstance(project, dict) else ""
@@ -264,11 +280,8 @@ class TaskTracker:
         task: dict,
         status: str,
     ) -> None:
-        # Only log if task is active (in progress)
-        if status in ACTIVE_STATUSES or status in COMPLETED_STATUSES:
-            info(f"Description updated on task: {task_name}")
-            # Description is already captured in status change events,
-            # so we don't need to add another log entry here
+        # Only relevant for active tasks, no need to log every description
+        pass
 
     def _on_checklist_change(
         self,
@@ -278,9 +291,7 @@ class TaskTracker:
         task: dict,
         status: str,
     ) -> None:
-        if not checklists:
-            return
-        info(f"Checklist updated on task: {task_name}")
+        pass
 
     # ── Helpers ───────────────────────────────────────────────────────
 

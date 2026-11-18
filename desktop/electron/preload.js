@@ -16,4 +16,11 @@ contextBridge.exposeInMainWorld('pet', {
   saveConfig: (config) => ipcRenderer.invoke('pet:save-config', config),
   isFirstLaunch: () => ipcRenderer.invoke('pet:is-first-launch'),
   markConfigured: () => ipcRenderer.invoke('pet:mark-configured'),
+
+  // ── Backend proxy (avoids file:// CORS issues) ─────────
+  backendFetch: (path) => ipcRenderer.invoke('pet:backend-fetch', path),
+  backendPost: (path, body) => ipcRenderer.invoke('pet:backend-post', { path, body }),
+  onBackendEvent: (callback) => {
+    ipcRenderer.on('pet:backend-event', (event, data) => callback(data))
+  },
 })

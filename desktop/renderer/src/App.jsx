@@ -3,7 +3,7 @@ import { AudioEngine } from './audio/audio_engine.js'
 
 const api = typeof window !== 'undefined' ? window.pet : null
 
-const SPRITE_URL = '/assets/pugasset-grid.png'
+const SPRITE_URL = './assets/pugasset-grid.png'
 const SHEET = {
   width: 800, height: 512,
   frameWidth: 64, frameHeight: 64,
@@ -38,7 +38,7 @@ const DEFAULT_STATES = ['idle', 'idle2']
 
 // ── WebSocket config ───────────────────────────────────────
 const WS_URL = 'ws://127.0.0.1:8000/ws/state'
-const RECONNECT_MS = 3000
+const RECONNECT_MS = 5000
 const OLLAMA_CHAT = 'http://127.0.0.1:11434/api/chat'
 const BACKEND_CHAT = 'http://127.0.0.1:8000/ai/chat'
 
@@ -177,6 +177,8 @@ export default function App() {
   const hoveredRef  = useRef(false)
   const lastPtrRef  = useRef({ x: 0, y: 0 })
   const readyRef    = useRef(false)
+  const wasDraggedRef = useRef(false)
+  const petClickRef = useRef(null)
 
   const applyVisual = () => {
     const el = elRef.current
@@ -215,6 +217,8 @@ export default function App() {
     let speechTimer = null
     let lastReactedType = ''
     let modeAnimTimer = 30000
+    let pollInterval = null
+    let lastPolledActivity = ''
 
     const showSpeech = (text, duration = 4000) => {
       if (!text) return
@@ -222,8 +226,10 @@ export default function App() {
       if (!el) return
       el.textContent = text
       el.classList.add('show')
+      // Longer text = longer display
+      const adjustedDuration = Math.max(duration, text.length * 80)
       if (speechTimer) clearTimeout(speechTimer)
-      speechTimer = setTimeout(() => { el.classList.remove('show') }, duration)
+      speechTimer = setTimeout(() => { el.classList.remove('show') }, adjustedDuration)
     }
 
     const forceAnim = (state, duration, speech) => {
@@ -274,11 +280,12 @@ export default function App() {
     // ── WebSocket ──────────────────────────────────────────
     let ws = null
     let reconnectTimer = null
+    let wasEverConnected = false
 
     function connectWs() {
       if (ws) try { ws.close() } catch {}
       ws = new WebSocket(WS_URL)
-      ws.onopen = () => { setConnDot(true) }
+      ws.onopen = () => { wasEverConnected = true; setConnDot(true) }
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)
@@ -304,10 +311,36 @@ export default function App() {
               const speech = EVENT_SPEECH[ev]?.(data)
               if (reaction) forceAnim(reaction.state, reaction.duration, speech)
             }
+
+            // ── Push notifications from backend ──────────────
+            if (ev === 'clickup.mention') {
+              const text = data?.comment_text
+                ? `📬 ${data.author}: "${data.comment_text.slice(0, 50)}"`
+                : `📬 ${data?.author || 'Alguien'} te escribió en "${(data?.task_name || '').slice(0, 30)}"`
+              forceAnim('jump', 6000, text)
+              audioEngine.play('alerta')
+            }
+            if (ev === 'deadline.overdue') {
+              forceAnim('jump', 5000, `⏰ ¡Tarea vencida! ${(data?.task_name || '').slice(0, 30)}`)
+              audioEngine.play('alerta')
+            }
+            if (ev === 'pomodoro.completed') {
+              const count = data?.session_count || 0
+              forceAnim('jump', 4000, `🍅 ¡Pomodoro #${count} completado! Toma un descanso`)
+              audioEngine.play('ladrido')
+            }
+            if (ev === 'task.started') {
+              forceAnim('run', 3000, `🚀 Empezaste: ${(data?.task_name || '').slice(0, 30)}`)
+              audioEngine.play('ladrido')
+            }
+            if (ev === 'task.completed') {
+              forceAnim('jump', 4000, `✅ ¡Completaste: ${(data?.task_name || '').slice(0, 28)}!`)
+              audioEngine.play('ladrido')
+            }
           }
         } catch {}
       }
-      ws.onclose = () => { setConnDot(false); reconnectTimer = setTimeout(connectWs, RECONNECT_MS) }
+      ws.onclose = () => { if (wasEverConnected) setConnDot(false); reconnectTimer = setTimeout(connectWs, RECONNECT_MS) }
       ws.onerror = () => { ws?.close() }
     }
 
@@ -329,7 +362,85 @@ export default function App() {
       setTimeout(() => audioEngine.play('ladrido'), 800)
     })()
 
-    connectWs()
+    // ── Connectivity: use IPC bridge (main process handles WS + HTTP) ──
+    // The main process connects to the backend WebSocket and forwards events via IPC
+    if (api?.onBackendEvent) {
+      api.onBackendEvent((msg) => {
+        if (msg.type === 'connected') {
+          showSpeech(`${gConfig.assistantName} conectado 🟢`, 2000)
+          return
+        }
+        // Handle audio events
+        _handleAudioEvent(audioEngine, msg)
+
+        if (msg.type === 'event' && msg.data?.event) {
+          const ev = msg.data.event
+          const data = msg.data.data
+          if (data?.activity_type) lastKnownActivity = data.activity_type
+          const currentType = data?.activity_type || ''
+          const isTypeChange = currentType && currentType !== lastReactedType
+
+          if (ev === 'activity.switch' && isTypeChange) {
+            lastReactedType = currentType
+            const speech = EVENT_SPEECH['activity.update']?.(data)
+            const reaction = getReaction(ev, data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+          }
+          if (ev === 'activity.update' && isTypeChange) {
+            lastReactedType = currentType
+            const reaction = getReaction(ev, data)
+            const speech = EVENT_SPEECH[ev]?.(data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+          }
+
+          // Push notifications
+          if (ev === 'clickup.mention') {
+            const text = data?.comment_text
+              ? `📬 ${data.author}: "${data.comment_text.slice(0, 50)}"`
+              : `📬 ${data?.author || 'Alguien'} te escribió en "${(data?.task_name || '').slice(0, 30)}"`
+            forceAnim('jump', 6000, text)
+            audioEngine.play('alerta')
+          }
+          if (ev === 'deadline.overdue') {
+            forceAnim('jump', 5000, `⏰ ¡Tarea vencida! ${(data?.task_name || '').slice(0, 30)}`)
+            audioEngine.play('alerta')
+          }
+          if (ev === 'pomodoro.completed') {
+            forceAnim('jump', 4000, `🍅 ¡Pomodoro #${data?.session_count || 0} completado!`)
+            audioEngine.play('ladrido')
+          }
+          if (ev === 'task.started') {
+            forceAnim('run', 3000, `🚀 Empezaste: ${(data?.task_name || '').slice(0, 30)}`)
+            audioEngine.play('ladrido')
+          }
+          if (ev === 'task.completed') {
+            forceAnim('jump', 4000, `✅ ¡Completaste: ${(data?.task_name || '').slice(0, 28)}!`)
+            audioEngine.play('ladrido')
+          }
+        }
+      })
+    }
+
+    // Also use polling as backup for activity state
+    pollInterval = setInterval(async () => {
+      try {
+        const state = api?.backendFetch ? await api.backendFetch('/state') : null
+        if (!state) return
+        const activity = state.current_activity || ''
+        if (activity && activity !== lastPolledActivity && activity !== 'idle') {
+          lastPolledActivity = activity
+          lastKnownActivity = activity
+          // Only trigger animation if IPC bridge hasn't already
+          if (activity !== lastReactedType) {
+            const data = { activity_type: activity }
+            const speech = EVENT_SPEECH['activity.update']?.(data)
+            const reaction = getReaction('activity.update', data)
+            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            lastReactedType = activity
+          }
+        }
+      } catch {}
+    }, 5000)
 
     // ── Game loop ──────────────────────────────────────────
     const loop = (now) => {
@@ -389,32 +500,15 @@ export default function App() {
         overdueCheckInterval += dt
         if (overdueCheckInterval > 60000) {
           overdueCheckInterval = 0
-          checkOverdueTasks().then(tasks => {
-            const newOverdue = tasks.filter(t => !lastOverdueNotified.has(t.id))
-            if (newOverdue.length > 0) {
-              newOverdue.forEach(t => lastOverdueNotified.add(t.id))
-              const names = newOverdue.map(t => t.name).slice(0, 2).join(', ')
-              forceAnim('jump', 2000, `¡Tarea atrasada! ${names} ⏰`)
-              if (audioEngine) audioEngine.play('alerta')
-            }
-          })
+          // Overdue tasks are now pushed via WebSocket (deadline.overdue event)
+          // No need to poll from frontend
         }
 
         mentionsCheckInterval += dt
         if (mentionsCheckInterval > 120000) {
           mentionsCheckInterval = 0
-          checkNewMentions().then(mentions => {
-            const newMentions = mentions.filter(m => !lastMentionNotified.has(m.id))
-            if (newMentions.length > 0) {
-              newMentions.forEach(m => lastMentionNotified.add(m.id))
-              const first = newMentions[0]
-              const text = first.comment_text
-                ? `📬 ${first.author}: "${first.comment_text.slice(0, 40)}"`
-                : `📬 ${first.author} comentó en "${first.task_name.slice(0, 25)}"`
-              forceAnim('jump', 4000, text)
-              if (audioEngine) audioEngine.play('alerta')
-            }
-          })
+          // Mentions are now pushed via WebSocket (clickup.mention event)
+          // No need to poll from frontend
         }
 
         applyVisual()
@@ -429,6 +523,7 @@ export default function App() {
       if (ws) ws.close()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (speechTimer) clearTimeout(speechTimer)
+      if (pollInterval) clearInterval(pollInterval)
 
     }
   }, [])
@@ -467,10 +562,26 @@ export default function App() {
     if (api?.moveBy) { api.moveBy(dx, dy).catch(() => {}); return }
     gFallbackX += dx; posRef.current = { x: gFallbackX, y: posRef.current.y + dy }
   }
+  // ── Mouse tracking for transparent window hit-test ────────
+  // With forward:true, Electron forwards OS mouse events to the renderer as
+  // mousemove even when ignoring. We use this to toggle interactivity.
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!elRef.current) return
+      const rect = elRef.current.getBoundingClientRect()
+      const over = e.clientX >= rect.left && e.clientX <= rect.right &&
+                   e.clientY >= rect.top  && e.clientY <= rect.bottom
+      if (over !== hoveredRef.current) {
+        hoveredRef.current = over
+        if (!draggingRef.current) setInteractive(over)
+      }
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    return () => document.removeEventListener('mousemove', onMouseMove)
+  }, [])
+
   const onPointerEnter = () => { hoveredRef.current = true; setInteractive(true) }
   const onPointerLeave = () => { if (!draggingRef.current) setInteractive(false) }
-  const wasDraggedRef = useRef(false)
-  const petClickRef = useRef(null)
 
   const onPointerDown = (e) => {
     if (e.button !== 0) return

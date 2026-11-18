@@ -79,13 +79,13 @@ class AudioEngine {
       this._els[name] = el
 
       // Try to load mp3 in background — swap when ready
-      const mp3 = new Audio(`/sounds/${name}.mp3`)
+      const mp3 = new Audio(`./sounds/${name}.mp3`)
       mp3.preload = 'auto'
       mp3.addEventListener('canplaythrough', () => {
         mp3.volume = this._vol
         this._els[name] = mp3
-        console.log(`[Audio] ${name} → mp3`)
       }, { once: true })
+      mp3.addEventListener('error', () => {}, { once: true })
     }
     console.log('[Audio] Ready')
   }

@@ -220,6 +220,7 @@ async function sendMessage() {
         session_id: 'default',
         mode: gConfig.aiMode || 'local',
         api_token: gConfig.deepseekToken || '',
+        assistant_name: gConfig.assistantName || 'Pet',
       }),
     })
     if (!r.ok) {

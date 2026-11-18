@@ -28,6 +28,5 @@ class EventBus:
             info(f"Unsubscribed from event '{event}'")
 
     def emit(self, event: str, data: Any = None) -> None:
-        info(f"Emitting event '{event}'")
         for callback in self._subscribers.get(event, []):
             callback(event, data)

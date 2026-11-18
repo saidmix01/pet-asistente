@@ -23,7 +23,17 @@ from services.logger import info
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Auto-sync ClickUp on startup in background thread."""
+    """Auto-sync ClickUp on startup + start heartbeat in uvicorn's event loop."""
+    import asyncio
+
+    # Start heartbeat in the background (runs in uvicorn's event loop)
+    stream = getattr(app.state, 'event_stream', None)
+    heartbeat_task = None
+    if stream:
+        # Give the EventStream access to uvicorn's running loop
+        stream._loop = asyncio.get_running_loop()
+        heartbeat_task = asyncio.create_task(stream.heartbeat_loop(interval=5.0))
+
     import integrations.clickup_routes as cu_routes
     svc = cu_routes.clickup_service
     if svc and svc.is_connected():
@@ -32,6 +42,9 @@ async def lifespan(app: FastAPI):
     else:
         info("ClickUp not configured — skipping auto-sync")
     yield
+    # Cleanup
+    if heartbeat_task:
+        heartbeat_task.cancel()
 
 
 def _do_sync(svc):
@@ -39,7 +52,7 @@ def _do_sync(svc):
         result = svc.sync_all(days_back=7)
         info(f"ClickUp sync complete: {result.get('tasks_synced', 0)} tasks")
     except Exception as e:
-        info(f"ClickUp auto-sync failed: {e}")
+        info(f"ClickUp auto-sync failed: {type(e).__name__}: {e}")
 
 
 def create_app(
@@ -69,17 +82,38 @@ def create_app(
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "null",
-        ],
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # Log all requests and errors for debugging
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    class LoggingMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            try:
+                response = await call_next(request)
+                if response.status_code >= 400:
+                    info(f"HTTP {response.status_code} {request.method} {request.url.path}")
+                return response
+            except Exception as e:
+                info(f"HTTP ERROR {request.method} {request.url.path}: {type(e).__name__}: {e}")
+                raise
+
+    app.add_middleware(LoggingMiddleware)
+
     app.include_router(main_router)
+    # Import config_routes inside create_app to ensure all dependencies are ready
+    try:
+        from api.config_routes import router as config_router
+        app.include_router(config_router)
+        info("config_routes loaded OK")
+    except Exception as e:
+        info(f"WARNING: config_routes not available: {e}")
     app.include_router(clickup_router)
     app.include_router(due_soon_router)
     app.include_router(report_router)
@@ -88,4 +122,5 @@ def create_app(
     app.include_router(chat_router)
     app.include_router(pomodoro_router)
     app.include_router(mentions_router)
+
     return app

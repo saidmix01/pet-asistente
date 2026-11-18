@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { spawn } = require('child_process')
@@ -8,12 +8,28 @@ let mainWindow = null
 let chatWindow = null
 let configWindow = null
 let backendProcess = null
+let tray = null
 
 // ── Paths ──────────────────────────────────────────────────
 const isDev = !!process.env.VITE_DEV_SERVER_URL || !app.isPackaged
 
 function getPythonCommand() {
-  return process.platform === 'win32' ? 'python' : 'python3'
+  if (process.platform === 'win32') {
+    // Try common Python install paths on Windows
+    const fs = require('fs')
+    const candidates = [
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python314', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+      'python',
+    ]
+    for (const p of candidates) {
+      if (p === 'python') return p
+      if (fs.existsSync(p)) return p
+    }
+    return 'python'
+  }
+  return 'python3'
 }
 
 function getBackendPath() {
@@ -24,7 +40,9 @@ function getBackendPath() {
   // Prod: use compiled binary
   const resourcePath = process.resourcesPath
   const binName = process.platform === 'win32' ? 'asistente-core.exe' : 'asistente-core'
-  return path.join(resourcePath, 'backend', binName)
+  const fullPath = path.join(resourcePath, 'backend', binName)
+  console.log(`[Pet] Backend path: ${fullPath} (exists: ${fs.existsSync(fullPath)})`)
+  return fullPath
 }
 
 function getConfigPath() {
@@ -84,6 +102,7 @@ function startBackend() {
     backendProcess = spawn(cmd, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      windowsHide: true,
     })
 
     backendProcess.stdout.on('data', (data) => {
@@ -179,16 +198,18 @@ function createWindow() {
     skipTaskbar: true,
     hasShadow: false,
     backgroundColor: '#00000000',
-    webSecurity: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false,
       autoplayPolicy: 'no-user-gesture-required',
     },
   })
 
   mainWindow.setMenuBarVisibility(false)
+  // Use forward:true so clicks pass through the transparent area to windows below,
+  // but the renderer can still receive forwarded mousemove to detect hover over the pet.
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
 
   const rendererUrl = getRendererUrl()
@@ -243,7 +264,12 @@ ipcMain.handle('pet:get-screen-size', async () => {
 
 ipcMain.handle('pet:set-interactive', async (event, payload) => {
   if (!mainWindow) return false
-  mainWindow.setIgnoreMouseEvents(!(payload && payload.interactive))
+  const interactive = !!(payload && payload.interactive)
+  if (interactive) {
+    mainWindow.setIgnoreMouseEvents(false)
+  } else {
+    mainWindow.setIgnoreMouseEvents(true, { forward: true })
+  }
   return true
 })
 
@@ -257,6 +283,87 @@ ipcMain.handle('pet:move-by', async (event, payload) => {
   return true
 })
 
+// ── Backend proxy (IPC bridge for file:// CORS bypass) ───────
+ipcMain.handle('pet:backend-fetch', async (event, urlPath) => {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:8000${urlPath}`, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)) }
+        catch { resolve(null) }
+      })
+    })
+    req.on('error', () => resolve(null))
+    req.setTimeout(5000, () => { req.destroy(); resolve(null) })
+  })
+})
+
+ipcMain.handle('pet:backend-post', async (event, payload) => {
+  const { path: urlPath, body } = payload || {}
+  return new Promise((resolve) => {
+    const postData = JSON.stringify(body || {})
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 8000,
+      path: urlPath,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
+    }, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)) }
+        catch { resolve(null) }
+      })
+    })
+    req.on('error', () => resolve(null))
+    req.setTimeout(10000, () => { req.destroy(); resolve(null) })
+    req.write(postData)
+    req.end()
+  })
+})
+
+// ── WebSocket bridge (main process → renderer via IPC) ────────
+let backendWs = null
+
+function startWsBridge() {
+  const WebSocket = require('ws')
+  
+  function connect() {
+    try {
+      backendWs = new WebSocket('ws://127.0.0.1:8000/ws/state')
+    } catch { setTimeout(connect, 5000); return }
+
+    backendWs.on('open', () => {
+      console.log('[Pet] WS bridge connected')
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('pet:backend-event', { type: 'connected' })
+      }
+    })
+
+    backendWs.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('pet:backend-event', msg)
+        }
+      } catch {}
+    })
+
+    backendWs.on('close', () => {
+      backendWs = null
+      setTimeout(connect, 5000)
+    })
+
+    backendWs.on('error', () => {
+      if (backendWs) { try { backendWs.close() } catch {} }
+    })
+  }
+
+  connect()
+}
+
 // ── Config window (separada, no overlay) ─────────────────
 function openConfigWindow() {
   if (configWindow && !configWindow.isDestroyed()) {
@@ -264,8 +371,8 @@ function openConfigWindow() {
     return
   }
   configWindow = new BrowserWindow({
-    width: 440,
-    height: 520,
+    width: 460,
+    height: 620,
     resizable: false,
     alwaysOnTop: true,
     title: 'Pet Asistente - Configuración',
@@ -274,6 +381,7 @@ function openConfigWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false,
     },
   })
   configWindow.setMenuBarVisibility(false)
@@ -298,17 +406,97 @@ ipcMain.handle('pet:open-chat', async () => {
     alwaysOnTop: true,
     title: 'Pet Asistente - Chat',
     backgroundColor: '#1a1a2e',
-    webSecurity: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false,
     },
   })
   chatWindow.setMenuBarVisibility(false)
   chatWindow.loadFile(path.join(__dirname, '..', 'chat-renderer', 'index.html'))
   chatWindow.on('closed', () => { chatWindow = null })
 })
+
+// ── System Tray ─────────────────────────────────────────────
+function createTray() {
+  // Create a small 16x16 icon programmatically (paw emoji fallback)
+  const iconPath = path.join(__dirname, '..', 'assets', 'pugasset-grid.png')
+  let trayIcon
+  if (fs.existsSync(iconPath)) {
+    trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
+  } else {
+    // Fallback: create a tiny colored square
+    trayIcon = nativeImage.createEmpty()
+  }
+
+  tray = new Tray(trayIcon)
+  tray.setToolTip('Pet Asistente')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '💬 Chat',
+      click: () => {
+        if (ipcMain.listenerCount) {
+          // Trigger open chat
+          if (chatWindow && !chatWindow.isDestroyed()) {
+            chatWindow.focus()
+          } else {
+            const { BrowserWindow } = require('electron')
+            chatWindow = new BrowserWindow({
+              width: 420,
+              height: 560,
+              resizable: false,
+              alwaysOnTop: true,
+              title: 'Pet Asistente - Chat',
+              backgroundColor: '#1a1a2e',
+              webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                webSecurity: false,
+              },
+            })
+            chatWindow.setMenuBarVisibility(false)
+            chatWindow.loadFile(path.join(__dirname, '..', 'chat-renderer', 'index.html'))
+            chatWindow.on('closed', () => { chatWindow = null })
+          }
+        }
+      },
+    },
+    {
+      label: '⚙️ Configuración',
+      click: () => openConfigWindow(),
+    },
+    { type: 'separator' },
+    {
+      label: '👁️ Mostrar/Ocultar Pet',
+      click: () => {
+        if (mainWindow) {
+          if (mainWindow.isVisible()) mainWindow.hide()
+          else mainWindow.show()
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '❌ Cerrar',
+      click: () => {
+        stopBackend()
+        app.quit()
+      },
+    },
+  ])
+
+  tray.setContextMenu(contextMenu)
+
+  tray.on('double-click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) mainWindow.focus()
+      else mainWindow.show()
+    }
+  })
+}
 
 // ── App lifecycle ───────────────────────────────────────────
 app.whenReady().then(async () => {
@@ -317,8 +505,32 @@ app.whenReady().then(async () => {
     await startBackend()
     console.log('[Pet] Backend is ready, creating window...')
 
-    // Check first launch — open config window separately
+    // Start WebSocket bridge (main process connects to backend, forwards to renderer)
+    startWsBridge()
+
+    // Auto-connect ClickUp if token is saved in config
     const cfg = loadConfig()
+    if (cfg && cfg.clickupToken) {
+      console.log('[Pet] Auto-connecting ClickUp...')
+      try {
+        const postData = JSON.stringify({ token: cfg.clickupToken })
+        const req = http.request({
+          hostname: '127.0.0.1',
+          port: 8000,
+          path: '/integrations/clickup/connect',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
+        }, (res) => {
+          if (res.statusCode === 200) console.log('[Pet] ClickUp connected!')
+          else console.log(`[Pet] ClickUp connect failed: ${res.statusCode}`)
+        })
+        req.on('error', () => {})
+        req.write(postData)
+        req.end()
+      } catch {}
+    }
+
+    // Check first launch — open config window separately
     if (!cfg || cfg.firstLaunch !== false) {
       console.log('[Pet] First launch — opening config window...')
       openConfigWindow()
@@ -328,6 +540,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
+  createTray()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -335,8 +548,11 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  stopBackend()
-  if (process.platform !== 'darwin') app.quit()
+  // Keep running in tray on Windows/Linux
+  if (process.platform === 'darwin') {
+    // macOS: standard behavior
+  }
+  // Don't quit — app stays in system tray
 })
 
 app.on('before-quit', () => {
