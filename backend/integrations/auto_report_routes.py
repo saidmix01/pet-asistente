@@ -16,7 +16,7 @@ time_tracker = None
 
 
 @router.post("/generate")
-async def generate_report_now():
+def generate_report_now():
     """Force-generate today's report immediately."""
     if auto_report is None:
         raise HTTPException(500, "AutoReport not initialized")
@@ -55,7 +55,7 @@ async def get_active_tasks():
 
 
 @router.get("/git-activity")
-async def get_git_activity():
+def get_git_activity():
     """Get git repositories activity detected today."""
     if git_detector is None:
         return {"repos": []}

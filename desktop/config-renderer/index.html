@@ -3,252 +3,423 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Config - Pet Asistente</title>
+<title>Configuración - Pet Asistente</title>
 <style>
+:root {
+  --bg: #0c0f1a;
+  --surface: #131829;
+  --surface-2: #1a2138;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(129, 140, 248, 0.45);
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --green: #22c55e;
+  --red: #ef4444;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; }
+html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
   display: flex;
-  place-items: center;
-  place-content: center;
+  flex-direction: column;
   height: 100vh;
-  overflow: auto;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
-.container {
-  width: 400px;
-  padding: 24px 32px;
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 999px; }
+
+.top-bar {
+  background: linear-gradient(180deg, rgba(26, 33, 56, 0.92), rgba(19, 24, 41, 0.95));
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
 }
-h2 {
-  margin: 0 0 4px 0;
-  font-size: 20px;
-  text-align: center;
-  color: #fff;
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.22));
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.subtitle {
-  margin: 0 0 20px 0;
-  font-size: 12px;
-  text-align: center;
-  color: #999;
+.avatar img { width: 28px; height: 28px; image-rendering: pixelated; }
+.top-bar h2 { font-size: 16px; font-weight: 700; }
+.subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
 }
 .section-title {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #536dfe;
-  margin: 18px 0 10px 0;
-  padding-top: 14px;
-  border-top: 1px solid #2a2a4e;
+  letter-spacing: 0.06em;
+  color: #a5b4fc;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
-.section-title:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
-.field { margin-bottom: 14px; }
+
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
 .field label {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #ccc;
+  color: #cbd5e1;
   margin-bottom: 6px;
 }
-.field input[type="text"], .field input[type="password"] {
+.field input[type="text"],
+.field input[type="password"] {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 8px;
-  background: #16213e;
-  color: #eee;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
   font-size: 13px;
   outline: none;
-  box-sizing: border-box;
+  transition: border-color 0.15s;
 }
-.field input:focus { border-color: #536dfe; }
-.hint {
-  display: block;
-  font-size: 10px;
-  color: #888;
-  margin-top: 4px;
-}
+.field input:focus { border-color: var(--accent); }
+.hint { display: block; font-size: 11px; color: var(--text-dim); margin-top: 5px; }
+
 .radio-group { display: flex; flex-direction: column; gap: 8px; }
 .radio-option {
   display: block;
-  padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 8px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   cursor: pointer;
-  background: #16213e;
-  transition: border-color 0.2s;
+  background: var(--surface-2);
+  transition: all 0.15s ease;
 }
-.radio-option.active { border-color: #536dfe; background: #1a1a3e; }
+.radio-option:hover { border-color: rgba(129, 140, 248, 0.25); }
+.radio-option.active {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(139, 92, 246, 0.12));
+  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.12);
+}
 .radio-option input[type="radio"] { display: none; }
-.radio-label { display: block; font-size: 13px; font-weight: 600; color: #fff; }
-.radio-desc { display: block; font-size: 10px; color: #888; margin-top: 2px; }
+.radio-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+.radio-desc { display: block; font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.badge.connected { background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
+.badge.disconnected { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+/* Toggle switches */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.toggle-row + .toggle-row {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 12px;
+}
+.toggle-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.toggle-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #27304d;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+.switch input:checked + .slider {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.switch input:checked + .slider::before {
+  transform: translateX(18px);
+}
+
+.footer {
+  padding: 12px 20px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
 .btn {
   width: 100%;
-  padding: 12px;
+  padding: 11px;
   border: none;
-  border-radius: 8px;
-  background: #536dfe;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 10px;
+  box-shadow: 0 4px 16px var(--accent-glow);
+  transition: filter 0.15s, transform 0.12s;
 }
-.btn:hover { background: #3d5afe; }
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: scale(0.99); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.clickup-status {
-  display: inline-block;
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  margin-left: 8px;
-}
-.clickup-status.connected { background: #1b5e20; color: #a5d6a7; }
-.clickup-status.disconnected { background: #4a1010; color: #ef9a9a; }
-.status { text-align: center; font-size: 11px; color: #888; margin-top: 12px; }
+.status { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 16px; }
 </style>
 </head>
 <body>
-<div class="container">
-  <h2>🐾 Configuración</h2>
-  <p class="subtitle">Personalizá tu asistente virtual</p>
 
-  <div class="section-title">General</div>
+<div class="top-bar">
+  <div class="avatar"><img src="../assets/icon.png" alt="Pet"></div>
+  <div>
+    <h2>Configuración</h2>
+    <p class="subtitle">Personaliza tu asistente virtual</p>
+  </div>
+</div>
 
-  <div class="field">
-    <label>Nombre del asistente</label>
-    <input type="text" id="assistantName" placeholder="Ej: Pet, Jarvis..." maxlength="20">
+<div class="content">
+  <div class="card">
+    <div class="section-title">General</div>
+    <div class="field">
+      <label for="assistantName">Nombre del asistente</label>
+      <input type="text" id="assistantName" placeholder="Ej: Pet, Jarvis..." maxlength="20">
+    </div>
   </div>
 
-  <div class="section-title">Inteligencia Artificial</div>
+  <div class="card">
+    <div class="section-title">Inteligencia Artificial</div>
+    <div class="field">
+      <div class="radio-group">
+        <label class="radio-option active" id="modeAntigravity">
+          <input type="radio" name="aiMode" value="antigravity" checked>
+          <span class="radio-label">
+            <span>🚀 Antigravity CLI (agy)</span>
+            <span class="badge disconnected" id="agyStatus">verificando...</span>
+          </span>
+          <span class="radio-desc">Sin API key, usa tu sesión de Antigravity CLI en Windows/Linux</span>
+        </label>
+        <label class="radio-option" id="modeLocal">
+          <input type="radio" name="aiMode" value="local">
+          <span class="radio-label">
+            <span>🖥️ Local (Ollama)</span>
+            <span class="badge disconnected" id="ollamaStatus">verificando...</span>
+          </span>
+          <span class="radio-desc">100% local, requiere Ollama en ejecución</span>
+        </label>
+        <label class="radio-option" id="modeRemote">
+          <input type="radio" name="aiMode" value="remote">
+          <span class="radio-label"><span>☁️ Remoto (DeepSeek)</span></span>
+          <span class="radio-desc">API remota, requiere token de DeepSeek</span>
+        </label>
+      </div>
+    </div>
 
-  <div class="field">
-    <label>Modo de IA</label>
-    <div class="radio-group">
-      <label class="radio-option" id="modeLocal">
-        <input type="radio" name="aiMode" value="local" checked>
-        <span class="radio-label">🖥️ Local (Ollama)</span>
-        <span class="radio-desc">Más privado, requiere Ollama instalado</span>
+    <div class="field" id="tokenField" style="display:none;margin-top:12px">
+      <label for="deepseekToken">Token de DeepSeek</label>
+      <input type="password" id="deepseekToken" placeholder="sk-...">
+      <span class="hint">Obtenelo en platform.deepseek.com</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Comportamiento</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-title">🧠 Control autónomo por IA</div>
+        <div class="toggle-desc">La IA dirige los movimientos, coreografías, humor y comentarios de la mascota</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="aiAutonomy" checked>
+        <span class="slider"></span>
       </label>
-      <label class="radio-option" id="modeRemote">
-        <input type="radio" name="aiMode" value="remote">
-        <span class="radio-label">☁️ Remoto (DeepSeek)</span>
-        <span class="radio-desc">No necesita Ollama, requiere token</span>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-title">🔊 Sonidos de la mascota</div>
+        <div class="toggle-desc">Ladridos y alertas al interactuar o recibir avisos</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="soundEnabled" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-title">🎭 Simular actividad si no se detecta ventana</div>
+        <div class="toggle-desc">Solo útil si tu escritorio no expone la ventana activa (requiere reiniciar)</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="simulateActivity">
+        <span class="slider"></span>
       </label>
     </div>
   </div>
 
-  <div class="field" id="tokenField" style="display:none">
-    <label>Token de DeepSeek</label>
-    <input type="password" id="deepseekToken" placeholder="sk-...">
-    <span class="hint">Obtenelo en platform.deepseek.com</span>
+  <div class="card">
+    <div class="section-title">
+      <span>ClickUp</span>
+      <span class="badge disconnected" id="clickupStatus">desconectado</span>
+    </div>
+    <div class="field">
+      <label for="clickupToken">Token de API Personal</label>
+      <input type="password" id="clickupToken" placeholder="pk_...">
+      <span class="hint">Settings → Apps → API Token en app.clickup.com</span>
+    </div>
   </div>
+</div>
 
-  <div class="section-title">ClickUp <span class="clickup-status disconnected" id="clickupStatus">desconectado</span></div>
-
-  <div class="field">
-    <label>Token de ClickUp (API Personal)</label>
-    <input type="password" id="clickupToken" placeholder="pk_...">
-    <span class="hint">Settings → Apps → API Token en app.clickup.com</span>
-  </div>
-
-  <button class="btn" id="saveBtn">💾 Guardar</button>
+<div class="footer">
+  <button class="btn" id="saveBtn">💾 Guardar cambios</button>
   <div class="status" id="status"></div>
 </div>
 
 <script>
+const API = 'http://127.0.0.1:8000'
 const nameInput = document.getElementById('assistantName')
+const modeAntigravity = document.getElementById('modeAntigravity')
 const modeLocal = document.getElementById('modeLocal')
 const modeRemote = document.getElementById('modeRemote')
+const agyStatusEl = document.getElementById('agyStatus')
+const ollamaStatusEl = document.getElementById('ollamaStatus')
 const tokenField = document.getElementById('tokenField')
 const tokenInput = document.getElementById('deepseekToken')
 const clickupTokenInput = document.getElementById('clickupToken')
 const clickupStatusEl = document.getElementById('clickupStatus')
+const soundEnabledEl = document.getElementById('soundEnabled')
+const simulateActivityEl = document.getElementById('simulateActivity')
+const aiAutonomyEl = document.getElementById('aiAutonomy')
 const saveBtn = document.getElementById('saveBtn')
 const statusEl = document.getElementById('status')
 
-// Check ClickUp status
-async function checkClickUp() {
+function applyModeSelection(mode) {
+  const validMode = ['antigravity', 'local', 'remote'].includes(mode) ? mode : 'antigravity'
+  const radio = document.querySelector(`input[name="aiMode"][value="${validMode}"]`)
+  if (radio) radio.checked = true
+  modeAntigravity.classList.toggle('active', validMode === 'antigravity')
+  modeLocal.classList.toggle('active', validMode === 'local')
+  modeRemote.classList.toggle('active', validMode === 'remote')
+  tokenField.style.display = validMode === 'remote' ? 'block' : 'none'
+}
+
+async function checkAiProviders() {
   try {
-    const r = await fetch('http://127.0.0.1:8000/integrations/clickup/status')
+    const r = await fetch(`${API}/ai/status`)
     const d = await r.json()
-    if (d.connected) {
-      clickupStatusEl.textContent = 'conectado ✓'
-      clickupStatusEl.className = 'clickup-status connected'
-    } else {
-      clickupStatusEl.textContent = 'desconectado'
-      clickupStatusEl.className = 'clickup-status disconnected'
-    }
+    agyStatusEl.textContent = d.antigravity_available ? 'disponible ✓' : 'no instalado'
+    agyStatusEl.className = `badge ${d.antigravity_available ? 'connected' : 'disconnected'}`
+    ollamaStatusEl.textContent = d.ollama_available ? 'activo ✓' : 'offline'
+    ollamaStatusEl.className = `badge ${d.ollama_available ? 'connected' : 'disconnected'}`
   } catch {
-    clickupStatusEl.textContent = 'backend offline'
-    clickupStatusEl.className = 'clickup-status disconnected'
+    agyStatusEl.textContent = 'offline'
+    ollamaStatusEl.textContent = 'offline'
   }
 }
 
-// Load current config
+async function checkClickUp() {
+  try {
+    const r = await fetch(`${API}/integrations/clickup/status`)
+    const d = await r.json()
+    clickupStatusEl.textContent = d.connected ? 'conectado ✓' : 'desconectado'
+    clickupStatusEl.className = `badge ${d.connected ? 'connected' : 'disconnected'}`
+  } catch {
+    clickupStatusEl.textContent = 'backend offline'
+    clickupStatusEl.className = 'badge disconnected'
+  }
+}
+
 async function loadConfig() {
   let cfg = null
-
-  // Try Electron config first
   try {
-    if (window.pet?.getConfig) {
-      cfg = await window.pet.getConfig()
+    if (window.pet?.getConfig) cfg = await window.pet.getConfig()
+  } catch {}
+  try {
+    const r = await fetch(`${API}/config`)
+    if (r.ok) {
+      const b = await r.json()
+      cfg = { ...b, ...(cfg || {}) }
     }
   } catch {}
 
-  // If no Electron config, try backend SQLite
-  if (!cfg || !cfg.assistantName || cfg.assistantName === 'Pet') {
-    try {
-      const r = await fetch('http://127.0.0.1:8000/config')
-      if (r.ok) {
-        const backendCfg = await r.json()
-        if (backendCfg.assistantName && backendCfg.assistantName !== 'Pet') {
-          cfg = { ...cfg, ...backendCfg }
-        }
-      }
-    } catch {}
-  }
-
   if (cfg) {
     nameInput.value = cfg.assistantName || 'Pet'
-    if (cfg.aiMode === 'remote') {
-      document.querySelector('input[name="aiMode"][value="remote"]').checked = true
-      modeRemote.classList.add('active')
-      modeLocal.classList.remove('active')
-      tokenField.style.display = 'block'
-    } else {
-      document.querySelector('input[name="aiMode"][value="local"]').checked = true
-      modeLocal.classList.add('active')
-      modeRemote.classList.remove('active')
-      tokenField.style.display = 'none'
-    }
+    applyModeSelection(cfg.aiMode || 'antigravity')
     if (cfg.deepseekToken) tokenInput.value = cfg.deepseekToken
     if (cfg.clickupToken) clickupTokenInput.value = cfg.clickupToken
+    soundEnabledEl.checked = !cfg.soundMuted
+    simulateActivityEl.checked = !!cfg.simulateActivity
+    aiAutonomyEl.checked = cfg.aiAutonomy !== false
+  } else {
+    applyModeSelection('antigravity')
   }
 
+  checkAiProviders()
   checkClickUp()
 }
 
-// Mode toggle
 document.querySelectorAll('input[name="aiMode"]').forEach(el => {
-  el.addEventListener('change', () => {
-    const isRemote = el.value === 'remote' && el.checked
-    tokenField.style.display = isRemote ? 'block' : 'none'
-    modeLocal.classList.toggle('active', document.querySelector('input[name="aiMode"][value="local"]').checked)
-    modeRemote.classList.toggle('active', document.querySelector('input[name="aiMode"][value="remote"]').checked)
-  })
+  el.addEventListener('change', () => { if (el.checked) applyModeSelection(el.value) })
 })
 
-// Save
 saveBtn.addEventListener('click', async () => {
   const clickupToken = clickupTokenInput.value.trim()
   const cfg = {
     assistantName: nameInput.value.trim() || 'Pet',
-    aiMode: document.querySelector('input[name="aiMode"]:checked')?.value || 'local',
+    aiMode: document.querySelector('input[name="aiMode"]:checked')?.value || 'antigravity',
     deepseekToken: tokenInput.value.trim(),
-    clickupToken: clickupToken,
+    clickupToken,
+    soundMuted: !soundEnabledEl.checked,
+    simulateActivity: !!simulateActivityEl.checked,
+    aiAutonomy: !!aiAutonomyEl.checked,
     firstLaunch: false,
   }
   saveBtn.disabled = true
@@ -256,59 +427,51 @@ saveBtn.addEventListener('click', async () => {
   statusEl.textContent = ''
 
   try {
-    // Save general config via Electron
     if (window.pet?.saveConfig) await window.pet.saveConfig(cfg)
     if (window.pet?.markConfigured) await window.pet.markConfigured()
 
-    // Save config to backend SQLite (persistent across reinstalls)
-    try {
-      await fetch('http://127.0.0.1:8000/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
-      }).catch(() => {})
-    } catch {}
+    await fetch(`${API}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    }).catch(() => {})
 
-    // Connect ClickUp if token provided
     if (clickupToken) {
       try {
-        // Check if already connected first
-        const statusR = await fetch('http://127.0.0.1:8000/integrations/clickup/status')
+        const statusR = await fetch(`${API}/integrations/clickup/status`)
         const statusD = await statusR.json()
-        if (statusD.connected) {
-          clickupStatusEl.textContent = 'conectado ✓'
-          clickupStatusEl.className = 'clickup-status connected'
-        } else {
-          // Not connected, try to connect
-          const r = await fetch('http://127.0.0.1:8000/integrations/clickup/connect', {
+        if (!statusD.connected) {
+          const r = await fetch(`${API}/integrations/clickup/connect`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: clickupToken }),
           })
           if (r.ok) {
             clickupStatusEl.textContent = 'conectado ✓'
-            clickupStatusEl.className = 'clickup-status connected'
-            fetch('http://127.0.0.1:8000/integrations/clickup/sync', { method: 'POST' }).catch(() => {})
+            clickupStatusEl.className = 'badge connected'
+            fetch(`${API}/integrations/clickup/sync`, { method: 'POST' }).catch(() => {})
           } else {
             const err = await r.json().catch(() => ({}))
             statusEl.textContent = `⚠️ ClickUp: ${err.detail || 'error de conexión'}`
-            statusEl.style.color = '#ffc107'
+            statusEl.style.color = '#fbbf24'
           }
         }
       } catch {
-        statusEl.textContent = '⚠️ No se pudo conectar a ClickUp (backend offline?)'
-        statusEl.style.color = '#ffc107'
+        statusEl.textContent = '⚠️ No se pudo conectar a ClickUp'
+        statusEl.style.color = '#fbbf24'
       }
     }
 
-    statusEl.textContent = statusEl.textContent || '✅ Guardado'
-    if (!statusEl.style.color || statusEl.style.color === '') statusEl.style.color = '#4caf50'
-    setTimeout(() => window.close(), 2000)
+    if (!statusEl.textContent) {
+      statusEl.textContent = '✅ Cambios guardados'
+      statusEl.style.color = '#4ade80'
+    }
+    setTimeout(() => window.close(), 1200)
   } catch {
     statusEl.textContent = '❌ Error al guardar'
-    statusEl.style.color = '#ff5252'
+    statusEl.style.color = '#f87171'
     saveBtn.disabled = false
-    saveBtn.textContent = '💾 Guardar'
+    saveBtn.textContent = '💾 Guardar cambios'
   }
 })
 

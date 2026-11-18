@@ -3,191 +3,895 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat - Pet Asistente</title>
+<title>Pet Asistente</title>
 <style>
+:root {
+  --bg: #0c0f1a;
+  --surface: #131829;
+  --surface-2: #1a2138;
+  --surface-hover: #212a46;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(129, 140, 248, 0.35);
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --radius: 14px;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; }
+html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Custom slim scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.35); }
+
+/* ── Header ──────────────────────────────────────────── */
 .header {
-  background: #16213e;
-  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(26, 33, 56, 0.92), rgba(19, 24, 41, 0.95));
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid #0f3460;
-  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border);
 }
-.header h1 { font-size: 14px; font-weight: 600; flex: 1; }
-.header span { font-size: 20px; }
-.close-btn {
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.22));
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.avatar img {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+.header-info { flex: 1; min-width: 0; }
+.header-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.status-dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(34, 197, 94, 0.55); }
+.status-dot.warn { background: var(--amber); }
+.status-dot.err { background: var(--red); }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   -webkit-app-region: no-drag;
-  background: none; border: none; color: #888; font-size: 18px; cursor: pointer;
-  padding: 2px 8px; border-radius: 4px;
 }
-.close-btn:hover { background: #ff4444; color: #fff; }
-.messages {
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+.icon-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ── Navigation tabs ─────────────────────────────────── */
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 10px;
+  padding: 7px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.15s ease;
+}
+.tab-btn .tab-ico { font-size: 14px; line-height: 1; }
+.tab-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.tab-btn.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.22));
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Panels ──────────────────────────────────────────── */
+.panel {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel.active { display: flex; }
+
+.scroll-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
+
+/* ── Chat panel ──────────────────────────────────────── */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .msg {
-  max-width: 85%;
-  padding: 10px 14px;
-  border-radius: 12px;
+  max-width: 86%;
+  padding: 10px 13px;
+  border-radius: 14px;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.48;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  word-wrap: break-word;
-  max-height: none;
-  height: auto;
-  animation: fadeIn 0.3s;
+  animation: popIn 0.2s ease-out;
 }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .msg.user {
   align-self: flex-end;
-  background: #0f3460;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
   border-bottom-right-radius: 4px;
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 .msg.pet {
   align-self: flex-start;
-  background: #16213e;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-bottom-left-radius: 4px;
+}
+.msg code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 1px 5px;
+  border-radius: 5px;
 }
 .msg .time {
   font-size: 10px;
-  color: #666;
+  opacity: 0.6;
   margin-top: 4px;
   text-align: right;
 }
 .typing {
   align-self: flex-start;
-  color: #888;
-  font-size: 13px;
-  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
+.dots span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin: 0 1px;
+  animation: bounce 1.2s infinite ease-in-out;
+}
+.dots span:nth-child(2) { animation-delay: 0.15s; }
+.dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.quick-chips {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px 2px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.chip {
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chip:hover {
+  color: #fff;
+  border-color: var(--border-strong);
+  background: rgba(99, 102, 241, 0.18);
+}
+
 .input-area {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
-  background: #16213e;
-  border-top: 1px solid #0f3460;
+  padding: 10px 14px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 .input-area input {
   flex: 1;
-  background: #0f3460;
-  border: 1px solid #1a3a6e;
-  border-radius: 20px;
-  padding: 10px 16px;
-  color: #eee;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: var(--text);
   font-size: 13px;
   outline: none;
+  transition: border-color 0.15s;
 }
-.input-area input:focus { border-color: #536dfe; }
-.input-area button {
-  background: #536dfe;
+.input-area input:focus { border-color: var(--accent); }
+.send-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border: none;
   color: #fff;
-  border-radius: 20px;
-  padding: 8px 18px;
+  border-radius: 12px;
+  padding: 0 16px;
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  box-shadow: 0 4px 12px var(--accent-glow);
+  transition: transform 0.12s, opacity 0.15s;
 }
-.input-area button:hover { background: #3d5afe; }
-.input-area button:disabled { background: #333; color: #666; cursor: default; }
-.status {
-  text-align: center;
-  padding: 4px;
+.send-btn:hover { filter: brightness(1.08); }
+.send-btn:active { transform: scale(0.97); }
+.send-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+
+.voice-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.voice-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  transform: scale(1.05);
+}
+.voice-btn.recording {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ef4444;
+  animation: pulseMic 1.2s infinite ease-in-out;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.5);
+}
+@keyframes pulseMic {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
+  50% { transform: scale(1.08); box-shadow: 0 0 20px rgba(239, 68, 68, 0.6); }
+}
+
+/* ── Shared cards & buttons ──────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.card-title {
   font-size: 11px;
-  color: #666;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+.btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.btn.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none;
+  color: #fff;
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+.btn.danger:hover { background: rgba(239, 68, 68, 0.25); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.badge.ok { background: rgba(34, 197, 94, 0.14); color: #86efac; border-color: rgba(34, 197, 94, 0.3); }
+.badge.warn { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border-color: rgba(245, 158, 11, 0.3); }
+.badge.err { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3); }
+
+/* ── Pomodoro ring ───────────────────────────────────── */
+.pomo-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+}
+.ring-wrap {
+  position: relative;
+  width: 176px;
+  height: 176px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ring-wrap svg { transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: rgba(255, 255, 255, 0.08); stroke-width: 10; }
+.ring-fg {
+  fill: none;
+  stroke: url(#pomoGrad);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+.ring-text {
+  position: absolute;
+  text-align: center;
+}
+.ring-time {
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.ring-phase {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.preset-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.pomo-actions { display: flex; gap: 8px; }
+
+/* ── Tasks & Memory lists ────────────────────────────── */
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.list-row {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.list-row-main { flex: 1; min-width: 0; }
+.list-row-title { font-size: 13px; font-weight: 600; word-break: break-word; }
+.list-row-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+.inline-form {
+  display: flex;
+  gap: 8px;
+}
+.inline-form input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.inline-form input:focus { border-color: var(--accent); }
+
+/* ── Report stats ────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.stat-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+.stat-val { font-size: 16px; font-weight: 700; color: #fff; }
+.stat-lbl { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+.report-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.empty-state {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.toast {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e293b;
+  border: 1px solid var(--border-strong);
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
+
 <div class="header">
-  <span>🐾</span>
-  <h1>Pet Asistente</h1>
-  <button class="close-btn" onclick="window.close()">✕</button>
-</div>
-<div id="messages" class="messages">
-  <div class="msg pet">¡Hola! Soy tu mascota virtual. Pregúntame lo que quieras 🐶</div>
-</div>
-<div class="status" id="status">Conectando...</div>
-<div class="input-area">
-  <input id="input" type="text" placeholder="Escribe algo..." autofocus>
-  <button id="sendBtn" onclick="sendMessage()">Enviar</button>
+  <div class="avatar"><img src="../assets/icon.png" alt="Pet"></div>
+  <div class="header-info">
+    <div class="header-title" id="assistantTitle">Pet Asistente</div>
+    <div class="status-pill">
+      <span class="status-dot" id="aiDot"></span>
+      <span id="statusText">Conectando...</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="feedPetBtn" title="Dar galleta de desarrollo al perrito">🍪</button>
+    <button class="icon-btn" id="aiThinkBtn" title="Pedir a la IA un movimiento/acción ahora">🧠</button>
+    <button class="icon-btn" id="clearChatBtn" title="Limpiar chat">🗑️</button>
+    <button class="icon-btn" id="openSettingsBtn" title="Configuración">⚙️</button>
+  </div>
 </div>
 
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="chat"><span class="tab-ico">💬</span>Chat</button>
+  <button class="tab-btn" data-tab="pomodoro"><span class="tab-ico">🍅</span>Focus</button>
+  <button class="tab-btn" data-tab="tasks"><span class="tab-ico">✅</span>Tareas</button>
+  <button class="tab-btn" data-tab="report"><span class="tab-ico">📋</span>Reporte</button>
+  <button class="tab-btn" data-tab="memory"><span class="tab-ico">🧠</span>Memoria</button>
+</nav>
+
+<!-- ── TAB 1: CHAT ───────────────────────────────────── -->
+<section class="panel active" id="panel-chat">
+  <div id="messages" class="messages">
+    <div class="msg pet">¡Hola! Soy tu mascota asistente. Pregúntame sobre tus tareas, tu día o pídeme que recuerde algo 🐾</div>
+  </div>
+  <div class="quick-chips">
+    <button class="chip" data-prompt="¡Salta y sube un escalón!">🪜 Sube escalón</button>
+    <button class="chip" data-prompt="Baja del escalón al suelo">⬇️ Baja al piso</button>
+    <button class="chip" data-prompt="¡Sube a mi ventana activa y acompáñame!">🪟 Trepa ventana</button>
+    <button class="chip" data-prompt="¡Vamos a jugar a traer la pelota! ¡Lánzala!">🎾 Jugar pelota</button>
+    <button class="chip" data-prompt="¡Te doy una deliciosa galleta de desarrollo! ¡Come!">🍪 Dar snack</button>
+    <button class="chip" data-prompt="Activa el Modo Focus para concentrarme en código">🎯 Modo Focus</button>
+    <button class="chip" data-prompt="Ven al centro de la pantalla y siéntate">📍 Al centro</button>
+    <button class="chip" data-prompt="¿Qué tareas tengo para hoy?">📌 Tareas</button>
+    <button class="chip" data-prompt="Dame un resumen rápido de mi actividad hoy">📊 Resumen</button>
+  </div>
+  <div class="input-area">
+    <button class="voice-btn" id="voiceBtn" title="Hablar con Pet (Comando de voz)">🎤</button>
+    <input id="chatInput" type="text" placeholder="Escribe un mensaje o habla..." autofocus>
+    <button class="send-btn" id="sendBtn">Enviar</button>
+  </div>
+</section>
+
+<!-- ── TAB 2: POMODORO ───────────────────────────────── -->
+<section class="panel" id="panel-pomodoro">
+  <div class="scroll-body">
+    <div class="card pomo-center">
+      <div class="ring-wrap">
+        <svg width="176" height="176" viewBox="0 0 176 176">
+          <defs>
+            <linearGradient id="pomoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6366f1"/>
+              <stop offset="100%" stop-color="#ec4899"/>
+            </linearGradient>
+          </defs>
+          <circle class="ring-bg" cx="88" cy="88" r="76"/>
+          <circle class="ring-fg" id="pomoRing" cx="88" cy="88" r="76" stroke-dasharray="477.52" stroke-dashoffset="0"/>
+        </svg>
+        <div class="ring-text">
+          <div class="ring-time" id="pomoTime">25:00</div>
+          <div class="ring-phase" id="pomoPhase">Listo</div>
+        </div>
+      </div>
+
+      <div class="preset-row">
+        <button class="chip" data-pomo="25" data-phase="focus">🍅 25m Focus</button>
+        <button class="chip" data-pomo="50" data-phase="focus">🔥 50m Deep</button>
+        <button class="chip" data-pomo="5" data-phase="break">☕ 5m Break</button>
+        <button class="chip" data-pomo="15" data-phase="long_break">🌿 15m Largo</button>
+      </div>
+
+      <div class="pomo-actions">
+        <button class="btn primary" id="pomoStartBtn">▶ Iniciar</button>
+        <button class="btn" id="pomoPauseBtn" style="display:none">⏸ Pausar</button>
+        <button class="btn danger" id="pomoStopBtn" style="display:none">⏹ Detener</button>
+      </div>
+
+      <span class="badge ok" id="pomoCountBadge">🍅 0 sesiones hoy</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── TAB 3: TAREAS ─────────────────────────────────── -->
+<section class="panel" id="panel-tasks">
+  <div class="scroll-body">
+    <div class="card">
+      <div class="card-title">
+        <span>ClickUp</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="badge" id="cuBadge">verificando...</span>
+          <button class="btn" id="cuSyncBtn" style="padding:4px 9px;font-size:11px">🔄 Sync</button>
+        </div>
+      </div>
+      <div class="item-list" id="tasksList">
+        <div class="empty-state">Cargando tareas...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Registrar avance manual</div>
+      <div class="inline-form">
+        <input id="logTaskInput" type="text" placeholder="Ej: Ajustar login / módulo API...">
+        <button class="btn primary" id="addLogBtn">＋ Log</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TAB 4: REPORTE ────────────────────────────────── -->
+<section class="panel" id="panel-report">
+  <div class="scroll-body">
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-val" id="statActivity">—</div>
+        <div class="stat-lbl">Actividad</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statScore">0%</div>
+        <div class="stat-lbl">Productividad</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statRepos">0</div>
+        <div class="stat-lbl">Repos Git hoy</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>Reporte diario</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn" id="standupBtn" style="padding:4px 9px;font-size:11px">🎯 Standup Slack</button>
+          <button class="btn" id="copyReportBtn" style="padding:4px 9px;font-size:11px">📋 Copiar</button>
+          <button class="btn primary" id="aiReportBtn" style="padding:4px 9px;font-size:11px">✨ Con IA</button>
+        </div>
+      </div>
+      <div class="report-box" id="reportBox">Cargando reporte del día...</div>
+      <div style="margin-top:10px;display:flex;justify-content:flex-end">
+        <button class="btn" id="saveReportBtn">💾 Guardar reporte</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TAB 5: MEMORIA ────────────────────────────────── -->
+<section class="panel" id="panel-memory">
+  <div class="scroll-body">
+    <div class="card">
+      <div class="card-title">Guardar nuevo recuerdo</div>
+      <div class="inline-form">
+        <input id="memoryInput" type="text" placeholder="Ej: Mi daily es a las 9:30 AM">
+        <button class="btn primary" id="addMemoryBtn">Guardar</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <span>Lo que recuerdo</span>
+        <span class="badge" id="memoryCount">0</span>
+      </div>
+      <div class="item-list" id="memoryList">
+        <div class="empty-state">Aún no tengo recuerdos guardados.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="./voice_recorder.js"></script>
 <script>
+const API = 'http://127.0.0.1:8000'
 const messagesEl = document.getElementById('messages')
-const inputEl = document.getElementById('input')
+const inputEl = document.getElementById('chatInput')
 const sendBtn = document.getElementById('sendBtn')
-const statusEl = document.getElementById('status')
-let loading = false
-let gConfig = { aiMode: 'local', deepseekToken: '', assistantName: 'Pet' }
+const voiceBtn = document.getElementById('voiceBtn')
+const statusTextEl = document.getElementById('statusText')
+const aiDotEl = document.getElementById('aiDot')
+const titleEl = document.getElementById('assistantTitle')
+const toastEl = document.getElementById('toast')
 
-// Load config from Electron
+let loading = false
+let gConfig = { aiMode: 'antigravity', deepseekToken: '', assistantName: 'Pet' }
+let selectedPomoMinutes = 25
+let selectedPomoPhase = 'focus'
+let currentPomo = { active: false, paused: false }
+let toastTimer = null
+
+function showToast(msg) {
+  toastEl.textContent = msg
+  toastEl.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200)
+}
+
+// ── Tabs ────────────────────────────────────────────────
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName)
+  })
+  document.querySelectorAll('.panel').forEach(p => {
+    p.classList.toggle('active', p.id === `panel-${tabName}`)
+  })
+  if (tabName === 'pomodoro') refreshPomodoro()
+  if (tabName === 'tasks') loadTasks()
+  if (tabName === 'report') loadReport()
+  if (tabName === 'memory') loadMemories()
+  if (tabName === 'chat') setTimeout(() => inputEl.focus(), 80)
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab))
+})
+
+if (window.pet?.onSwitchTab) {
+  window.pet.onSwitchTab((tab) => switchTab(tab))
+}
+
+document.getElementById('openSettingsBtn').addEventListener('click', () => {
+  window.pet?.openConfig?.()
+})
+
+document.getElementById('aiThinkBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('aiThinkBtn')
+  btn.disabled = true
+  showToast('🧠 IA decidiendo movimiento...')
+  try {
+    const r = await fetch(`${API}/ai/pet/think`, { method: 'POST' })
+    const d = await r.json().catch(() => ({}))
+    if (r.ok && d.action) {
+      showToast(`🐾 IA eligió: ${d.action.action} (${d.action.mood})`)
+      checkStatus()
+    } else {
+      showToast(d.detail || 'IA ocupada o no disponible')
+    }
+  } catch {
+    showToast('No se pudo contactar con el cerebro IA')
+  } finally {
+    btn.disabled = false
+  }
+})
+
+// ── Config & Status ─────────────────────────────────────
+function applyConfig(cfg) {
+  if (!cfg) return
+  gConfig = { ...gConfig, ...cfg }
+  titleEl.textContent = gConfig.assistantName || 'Pet Asistente'
+  checkStatus()
+}
+
 async function loadConfig() {
   try {
     if (window.pet?.getConfig) {
-      const cfg = await window.pet.getConfig()
-      if (cfg) gConfig = cfg
+      applyConfig(await window.pet.getConfig())
     }
   } catch {}
-  // Update header with name
-  const nameEl = document.querySelector('.header h1')
-  if (nameEl) nameEl.textContent = gConfig.assistantName || 'Pet Asistente'
 }
 
-// Check AI status
+if (window.pet?.onConfigUpdated) {
+  window.pet.onConfigUpdated((cfg) => applyConfig(cfg))
+}
+
 async function checkStatus() {
   try {
-    const r = await fetch('http://127.0.0.1:8000/ai/status')
+    const [r, br] = await Promise.all([
+      fetch(`${API}/ai/status`),
+      fetch(`${API}/ai/pet/status`).catch(() => null),
+    ])
     const d = await r.json()
-    const mode = gConfig.aiMode || 'local'
-    if (mode === 'remote') {
-      if (gConfig.deepseekToken) {
-        statusEl.textContent = '🟢 DeepSeek listo'
-        statusEl.style.color = '#4caf50'
+    const brain = br && br.ok ? await br.json().catch(() => null) : null
+    const moodTag = brain?.mood ? ` · ${brain.mood}` : ''
+    const mode = gConfig.aiMode || 'antigravity'
+    if (mode === 'antigravity') {
+      if (d.antigravity_available) {
+        aiDotEl.className = 'status-dot ok'
+        statusTextEl.textContent = `Antigravity CLI listo${moodTag}`
       } else {
-        statusEl.textContent = '🟡 DeepSeek: falta token'
-        statusEl.style.color = '#ffc107'
+        aiDotEl.className = 'status-dot err'
+        statusTextEl.textContent = 'Antigravity CLI (agy) no instalado'
+      }
+    } else if (mode === 'remote') {
+      if (gConfig.deepseekToken) {
+        aiDotEl.className = 'status-dot ok'
+        statusTextEl.textContent = `DeepSeek conectado${moodTag}`
+      } else {
+        aiDotEl.className = 'status-dot warn'
+        statusTextEl.textContent = 'DeepSeek: falta token'
       }
     } else {
       if (d.ollama_available) {
-        statusEl.textContent = '🟢 Ollama conectado'
-        statusEl.style.color = '#4caf50'
+        aiDotEl.className = 'status-dot ok'
+        statusTextEl.textContent = `Ollama conectado${moodTag}`
       } else {
-        statusEl.textContent = '🔴 Ollama no disponible. Usá modo remoto con DeepSeek'
-        statusEl.style.color = '#ff5252'
+        aiDotEl.className = 'status-dot err'
+        statusTextEl.textContent = 'Ollama no disponible'
       }
     }
   } catch {
-    statusEl.textContent = '🔴 Backend no disponible'
-    statusEl.style.color = '#ff5252'
+    aiDotEl.className = 'status-dot err'
+    statusTextEl.textContent = 'Backend desconectado'
   }
 }
 
-loadConfig()
-checkStatus()
-setInterval(checkStatus, 10000)
+// ── Safe Markdown-lite text rendering (XSS-proof) ──────
+function appendSafeFormattedText(container, rawText) {
+  const text = String(rawText ?? '')
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g
+  let lastIndex = 0
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+    }
+    const token = match[0]
+    if (token.startsWith('**') && token.endsWith('**')) {
+      const strong = document.createElement('strong')
+      strong.textContent = token.slice(2, -2)
+      container.appendChild(strong)
+    } else if (token.startsWith('`') && token.endsWith('`')) {
+      const code = document.createElement('code')
+      code.textContent = token.slice(1, -1)
+      container.appendChild(code)
+    }
+    lastIndex = regex.lastIndex
+  }
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)))
+  }
+}
 
 function addMessage(text, isUser) {
   const div = document.createElement('div')
   div.className = `msg ${isUser ? 'user' : 'pet'}`
-  div.innerHTML = text
+  appendSafeFormattedText(div, text)
   const time = document.createElement('div')
   time.className = 'time'
   time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -196,8 +900,8 @@ function addMessage(text, isUser) {
   messagesEl.scrollTop = messagesEl.scrollHeight
 }
 
-async function sendMessage() {
-  const text = inputEl.value.trim()
+async function sendMessage(overrideText) {
+  const text = (overrideText ?? inputEl.value).trim()
   if (!text || loading) return
 
   inputEl.value = ''
@@ -207,73 +911,556 @@ async function sendMessage() {
 
   const typing = document.createElement('div')
   typing.className = 'typing'
-  typing.textContent = '🐾 Pensando...'
+  const label = document.createElement('span')
+  label.textContent = '🐾 Pensando'
+  const dots = document.createElement('span')
+  dots.className = 'dots'
+  dots.innerHTML = '<span></span><span></span><span></span>'
+  typing.appendChild(label)
+  typing.appendChild(dots)
   messagesEl.appendChild(typing)
   messagesEl.scrollTop = messagesEl.scrollHeight
 
   try {
-    const r = await fetch('http://127.0.0.1:8000/chat/send', {
+    const r = await fetch(`${API}/chat/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         message: text,
         session_id: 'default',
-        mode: gConfig.aiMode || 'local',
+        mode: gConfig.aiMode || 'antigravity',
         api_token: gConfig.deepseekToken || '',
         assistant_name: gConfig.assistantName || 'Pet',
       }),
     })
-    if (!r.ok) {
-      const errData = await r.json()
-      typing.remove()
-      addMessage(errData?.detail || 'Error del servidor 😵', false)
-      return
-    }
-    const d = await r.json()
     typing.remove()
-    addMessage(d?.response || '... 😶', false)
+    if (!r.ok) {
+      const errData = await r.json().catch(() => ({}))
+      addMessage(errData?.detail || 'Error del servidor 😵', false)
+    } else {
+      const d = await r.json()
+      addMessage(d?.response || '... 😶', false)
+    }
   } catch {
     typing.remove()
-    const mode = gConfig.aiMode || 'local'
-    if (mode === 'remote' && gConfig.deepseekToken) {
-      addMessage('No pude conectar con DeepSeek 😅 Revisa el token y la conexión.', false)
-    } else if (mode === 'local') {
-      addMessage('Ollama no responde 😅 Asegurate de tenerlo corriendo.', false)
+    const mode = gConfig.aiMode || 'antigravity'
+    if (mode === 'antigravity') {
+      addMessage('No pude hablar con Antigravity CLI (agy) 😅 Verificá que esté instalado y autenticado.', false)
+    } else if (mode === 'remote') {
+      addMessage('No pude conectar con DeepSeek 😅 Revisá el token y la conexión.', false)
     } else {
-      addMessage('No hay IA configurada 😅 Abrí ajustes.', false)
+      addMessage('Ollama no responde 😅 Asegurate de tenerlo corriendo.', false)
     }
+  } finally {
+    loading = false
+    sendBtn.disabled = false
+    inputEl.focus()
   }
-
-  loading = false
-  sendBtn.disabled = false
-  inputEl.focus()
 }
 
-inputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendMessage()
+sendBtn.addEventListener('click', () => sendMessage())
+inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage() })
+
+// ── Chat Keyboard Shortcuts ──────────────────────────────
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase()
+  if (e.key === 'Escape') {
+    window.close()
+    return
+  }
+  // Toggle Voice: Alt+V or Ctrl+Shift+V
+  if ((e.altKey && k === 'v') || (e.ctrlKey && e.shiftKey && k === 'v')) {
+    e.preventDefault()
+    if (voiceRecorder && voiceRecorder.isRecording) {
+      stopVoiceRecording()
+    } else {
+      startVoiceRecording()
+    }
+    return
+  }
 })
 
-// ── Load history ───────────────
+// ── Voice Commands ───────────────────────────────────────
+let voiceRecorder = null
+if (window.VoiceRecorder) {
+  voiceRecorder = new window.VoiceRecorder({
+    onAutoStop: () => stopVoiceRecording(),
+  })
+}
+
+async function stopVoiceRecording() {
+  if (!voiceRecorder || !voiceRecorder.isRecording) return
+  if (voiceBtn) voiceBtn.classList.remove('recording')
+  inputEl.placeholder = 'Escribe un mensaje o habla...'
+  const wavBlob = voiceRecorder.stop()
+  if (!wavBlob) return
+
+  showToast('🎙️ Escuchando y procesando...')
+  loading = true
+  sendBtn.disabled = true
+
+  const typing = document.createElement('div')
+  typing.className = 'typing'
+  const label = document.createElement('span')
+  label.textContent = '🎙️ Escuchando tu voz...'
+  const dots = document.createElement('span')
+  dots.className = 'dots'
+  dots.innerHTML = '<span></span><span></span><span></span>'
+  typing.appendChild(label)
+  typing.appendChild(dots)
+  messagesEl.appendChild(typing)
+  messagesEl.scrollTop = messagesEl.scrollHeight
+
+  try {
+    const formData = new FormData()
+    formData.append('file', wavBlob, 'command.wav')
+    const r = await fetch(`${API}/voice/command`, {
+      method: 'POST',
+      body: formData,
+    })
+    typing.remove()
+    const d = await r.json()
+    if (d.ok && d.text) {
+      addMessage(`🎙️ "${d.text}"`, true)
+      if (d.response) {
+        addMessage(d.response, false)
+      }
+      if (d.intent_matched && d.action) {
+        showToast(`⚡ Orden ejecutada: ${d.action.action}`)
+      } else {
+        showToast('🐾 Pet respondió a tu voz')
+      }
+    } else {
+      showToast(d.response || 'No detecté voz clara')
+    }
+  } catch (err) {
+    typing.remove()
+    showToast('Error al procesar audio')
+  } finally {
+    loading = false
+    sendBtn.disabled = false
+    inputEl.focus()
+  }
+}
+
+async function startVoiceRecording() {
+  if (!voiceRecorder) {
+    showToast('Grabadora de voz no disponible')
+    return
+  }
+  try {
+    await voiceRecorder.start()
+    if (voiceBtn) voiceBtn.classList.add('recording')
+    inputEl.placeholder = '🎙️ ¡Te escucho! Habla tu orden...'
+    showToast('🎙️ Habla ahora (termina al pausar)...')
+  } catch (err) {
+    showToast('Acceso al micrófono denegado o no disponible')
+  }
+}
+
+if (voiceBtn) {
+  voiceBtn.addEventListener('click', () => {
+    if (voiceRecorder && voiceRecorder.isRecording) {
+      stopVoiceRecording()
+    } else {
+      startVoiceRecording()
+    }
+  })
+}
+
+document.querySelectorAll('.quick-chips .chip').forEach(ch => {
+  ch.addEventListener('click', () => sendMessage(ch.dataset.prompt))
+})
+
+document.getElementById('clearChatBtn').addEventListener('click', async () => {
+  try {
+    await fetch(`${API}/chat/clear?session_id=default`, { method: 'POST' })
+    messagesEl.innerHTML = ''
+    addMessage('Historial limpio. ¿En qué te ayudo ahora? 🐾', false)
+    showToast('Chat limpiado')
+  } catch {
+    showToast('No se pudo limpiar el chat')
+  }
+})
+
 async function loadHistory() {
   try {
-    const r = await fetch('http://127.0.0.1:8000/chat/history?session_id=default&limit=30')
+    const r = await fetch(`${API}/chat/history?session_id=default&limit=30`)
     const d = await r.json()
     if (d.history && d.history.length > 0) {
-      messagesEl.innerHTML = ''  // Clear welcome message
+      messagesEl.innerHTML = ''
       for (const msg of d.history) {
         if (msg.role === 'user' || msg.role === 'assistant') {
           addMessage(msg.content, msg.role === 'user')
         }
       }
     }
-  } catch { /* no history */ }
+  } catch {}
 }
 
-// Load config + history, then focus
-loadConfig().then(() => {
-  loadHistory()
-  setTimeout(() => inputEl.focus(), 300)
+// ── Pomodoro ────────────────────────────────────────────
+const pomoTimeEl = document.getElementById('pomoTime')
+const pomoPhaseEl = document.getElementById('pomoPhase')
+const pomoRingEl = document.getElementById('pomoRing')
+const pomoStartBtn = document.getElementById('pomoStartBtn')
+const pomoPauseBtn = document.getElementById('pomoPauseBtn')
+const pomoStopBtn = document.getElementById('pomoStopBtn')
+const pomoCountBadge = document.getElementById('pomoCountBadge')
+const RING_CIRC = 2 * Math.PI * 76
+
+function fmtClock(sec) {
+  const s = Math.max(0, Math.round(sec))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
+}
+
+async function refreshPomodoro() {
+  try {
+    const r = await fetch(`${API}/pomodoro/status`)
+    const d = await r.json()
+    currentPomo = d
+    const phaseLabels = { idle: 'Listo', focus: 'Enfoque', break: 'Descanso', long_break: 'Descanso largo' }
+    if (d.active) {
+      pomoTimeEl.textContent = fmtClock(d.remaining)
+      pomoPhaseEl.textContent = d.paused ? 'Pausado' : (phaseLabels[d.phase] || d.phase)
+      pomoRingEl.style.strokeDashoffset = String(RING_CIRC * (1 - (d.progress_pct || 0) / 100))
+      pomoStartBtn.style.display = 'none'
+      pomoPauseBtn.style.display = 'inline-flex'
+      pomoPauseBtn.textContent = d.paused ? '▶ Reanudar' : '⏸ Pausar'
+      pomoStopBtn.style.display = 'inline-flex'
+    } else {
+      pomoTimeEl.textContent = fmtClock(selectedPomoMinutes * 60)
+      pomoPhaseEl.textContent = phaseLabels[selectedPomoPhase] || 'Listo'
+      pomoRingEl.style.strokeDashoffset = '0'
+      pomoStartBtn.style.display = 'inline-flex'
+      pomoPauseBtn.style.display = 'none'
+      pomoStopBtn.style.display = 'none'
+    }
+    pomoCountBadge.textContent = `🍅 ${d.session_count || 0} sesiones hoy`
+  } catch {}
+}
+
+document.querySelectorAll('[data-pomo]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedPomoMinutes = parseInt(btn.dataset.pomo, 10) || 25
+    selectedPomoPhase = btn.dataset.phase || 'focus'
+    if (!currentPomo.active) {
+      pomoTimeEl.textContent = fmtClock(selectedPomoMinutes * 60)
+      pomoPhaseEl.textContent = selectedPomoPhase === 'focus' ? 'Enfoque' : 'Descanso'
+    }
+  })
 })
+
+pomoStartBtn.addEventListener('click', async () => {
+  try {
+    await fetch(`${API}/pomodoro/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration_minutes: selectedPomoMinutes, phase: selectedPomoPhase }),
+    })
+    showToast(`Pomodoro ${selectedPomoMinutes}m iniciado`)
+    refreshPomodoro()
+  } catch { showToast('No se pudo iniciar Pomodoro') }
+})
+
+pomoPauseBtn.addEventListener('click', async () => {
+  const endpoint = currentPomo.paused ? '/pomodoro/resume' : '/pomodoro/pause'
+  try {
+    await fetch(`${API}${endpoint}`, { method: 'POST' })
+    refreshPomodoro()
+  } catch {}
+})
+
+pomoStopBtn.addEventListener('click', async () => {
+  try {
+    await fetch(`${API}/pomodoro/stop`, { method: 'POST' })
+    showToast('Pomodoro detenido')
+    refreshPomodoro()
+  } catch {}
+})
+
+setInterval(() => {
+  if (document.getElementById('panel-pomodoro').classList.contains('active')) {
+    refreshPomodoro()
+  }
+}, 1000)
+
+// ── Tasks ───────────────────────────────────────────────
+async function loadTasks() {
+  const listEl = document.getElementById('tasksList')
+  const badgeEl = document.getElementById('cuBadge')
+  try {
+    const st = await (await fetch(`${API}/integrations/clickup/status`)).json()
+    if (st.connected) {
+      badgeEl.textContent = 'conectado'
+      badgeEl.className = 'badge ok'
+    } else {
+      badgeEl.textContent = 'sin configurar'
+      badgeEl.className = 'badge warn'
+    }
+
+    const data = await (await fetch(`${API}/integrations/clickup/tasks?limit=25`)).json()
+    const tasks = data.tasks || []
+    listEl.innerHTML = ''
+    if (!tasks.length) {
+      const empty = document.createElement('div')
+      empty.className = 'empty-state'
+      empty.textContent = st.connected
+        ? 'No hay tareas sincronizadas todavía. Pulsa 🔄 Sync.'
+        : 'Conecta tu token de ClickUp en ⚙️ Ajustes para ver tus tareas aquí.'
+      listEl.appendChild(empty)
+      return
+    }
+    const now = Date.now()
+    for (const t of tasks) {
+      const row = document.createElement('div')
+      row.className = 'list-row'
+      const main = document.createElement('div')
+      main.className = 'list-row-main'
+      const title = document.createElement('div')
+      title.className = 'list-row-title'
+      title.textContent = t.name || 'Sin nombre'
+      const meta = document.createElement('div')
+      meta.className = 'list-row-meta'
+      const stBadge = document.createElement('span')
+      stBadge.className = 'badge'
+      stBadge.textContent = t.status || 'open'
+      meta.appendChild(stBadge)
+      if (t.due_date) {
+        const due = parseInt(t.due_date, 10)
+        const dueBadge = document.createElement('span')
+        const overdue = Number.isFinite(due) && due < now
+        dueBadge.className = `badge ${overdue ? 'err' : ''}`
+        dueBadge.textContent = overdue ? '⏰ Vencida' : `📅 ${new Date(due).toLocaleDateString()}`
+        meta.appendChild(dueBadge)
+      }
+      main.appendChild(title)
+      main.appendChild(meta)
+      row.appendChild(main)
+      listEl.appendChild(row)
+    }
+  } catch {
+    listEl.innerHTML = '<div class="empty-state">No se pudieron cargar las tareas.</div>'
+  }
+}
+
+document.getElementById('cuSyncBtn').addEventListener('click', async () => {
+  showToast('Sincronizando ClickUp...')
+  try {
+    const r = await fetch(`${API}/integrations/clickup/sync`, { method: 'POST' })
+    if (r.ok) {
+      showToast('ClickUp sincronizado ✓')
+      loadTasks()
+    } else {
+      showToast('Configura tu token de ClickUp en Ajustes')
+    }
+  } catch { showToast('Error al sincronizar') }
+})
+
+document.getElementById('addLogBtn').addEventListener('click', async () => {
+  const inp = document.getElementById('logTaskInput')
+  const val = inp.value.trim()
+  if (!val) return
+  try {
+    const r = await fetch(`${API}/report/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_name: val, project_name: 'General', progress: 100 }),
+    })
+    if (r.ok) {
+      inp.value = ''
+      showToast('Avance registrado en el reporte ✓')
+    }
+  } catch { showToast('Error al guardar avance') }
+})
+
+// ── Report ──────────────────────────────────────────────
+async function loadReport() {
+  const box = document.getElementById('reportBox')
+  try {
+    const [stateR, gitR, dailyR] = await Promise.all([
+      fetch(`${API}/state`).then(r => r.json()).catch(() => ({})),
+      fetch(`${API}/report/git-activity`).then(r => r.json()).catch(() => ({ repos: [] })),
+      fetch(`${API}/report/daily`).then(r => r.json()).catch(() => ({ report: '' })),
+    ])
+    document.getElementById('statActivity').textContent = stateR.current_activity || 'idle'
+    document.getElementById('statScore').textContent = `${Math.round((stateR.productivity_score || 0) * 100)}%`
+    document.getElementById('statRepos').textContent = String((gitR.repos || []).length)
+    box.textContent = dailyR.report || 'Sin registros de trabajo para hoy todavía.'
+  } catch {
+    box.textContent = 'No se pudo cargar el reporte.'
+  }
+}
+
+const feedPetBtn = document.getElementById('feedPetBtn')
+if (feedPetBtn) {
+  feedPetBtn.addEventListener('click', async () => {
+    try {
+      await fetch(`${API}/ai/pet/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'feed_snack', speech: '¡Ñam ñam! 🍪' }),
+      })
+      showToast('🍪 ¡Le diste una galleta al perrito!')
+    } catch {
+      showToast('No se pudo entregar el snack')
+    }
+  })
+}
+
+const standupBtn = document.getElementById('standupBtn')
+if (standupBtn) {
+  standupBtn.addEventListener('click', async () => {
+    standupBtn.textContent = '⏳...'
+    try {
+      const todayStr = new Date().toISOString().split('T')[0]
+      let gitSummary = ''
+      let tasksSummary = ''
+      try {
+        const r = await fetch(`${API}/report/git-activity`)
+        const gitRes = await r.json()
+        if (gitRes && Array.isArray(gitRes.repos)) {
+          const commits = gitRes.repos.flatMap(r => (r.commits || []).map(c => `• [${r.project || r.name}] ${c.message || c}`))
+          if (commits.length > 0) gitSummary = commits.slice(0, 5).join('\n')
+        }
+      } catch {}
+      try {
+        const r = await fetch(`${API}/report/active-tasks`)
+        const tRes = await r.json()
+        if (tRes && Array.isArray(tRes.all_active)) {
+          tasksSummary = tRes.all_active.map(t => `• ${t.name || t.id}`).slice(0, 4).join('\n')
+        }
+      } catch {}
+
+      const standupText = `🎯 *Daily Standup — ${todayStr}*\n\n✅ *Logros de hoy:*\n${gitSummary || '• Avances continuos en el proyecto'}\n\n⏳ *En progreso:*\n${tasksSummary || '• Desarrollo de funcionalidades activas'}\n\n🛑 *Bloqueos:*\n• Ninguno`
+
+      await navigator.clipboard.writeText(standupText)
+      standupBtn.textContent = '✅ ¡Copiado!'
+      showToast('📋 Standup copiado listo para Slack/Teams')
+      setTimeout(() => { standupBtn.textContent = '🎯 Standup Slack' }, 2500)
+    } catch (err) {
+      standupBtn.textContent = 'Error'
+      setTimeout(() => { standupBtn.textContent = '🎯 Standup Slack' }, 2000)
+    }
+  })
+}
+
+document.getElementById('copyReportBtn').addEventListener('click', async () => {
+  const txt = document.getElementById('reportBox').textContent || ''
+  try {
+    await navigator.clipboard.writeText(txt)
+    showToast('Reporte copiado 📋')
+  } catch { showToast('No se pudo copiar') }
+})
+
+document.getElementById('aiReportBtn').addEventListener('click', async () => {
+  const box = document.getElementById('reportBox')
+  const btn = document.getElementById('aiReportBtn')
+  btn.disabled = true
+  btn.textContent = '✨ Generando...'
+  try {
+    const qs = new URLSearchParams({
+      mode: gConfig.aiMode || 'antigravity',
+      api_token: gConfig.deepseekToken || '',
+    })
+    const r = await fetch(`${API}/ai/report?${qs.toString()}`)
+    const d = await r.json()
+    if (r.ok && d.enhanced) {
+      box.textContent = d.enhanced
+      showToast('Reporte mejorado con IA ✨')
+    } else {
+      showToast(d.detail || 'No se pudo generar con IA')
+    }
+  } catch {
+    showToast('Error al generar reporte con IA')
+  } finally {
+    btn.disabled = false
+    btn.textContent = '✨ Con IA'
+  }
+})
+
+document.getElementById('saveReportBtn').addEventListener('click', async () => {
+  try {
+    const r = await fetch(`${API}/report/generate`, { method: 'POST' })
+    if (r.ok) showToast('Reporte guardado ✓')
+  } catch { showToast('Error al guardar reporte') }
+})
+
+// ── Memory ──────────────────────────────────────────────
+async function loadMemories() {
+  const listEl = document.getElementById('memoryList')
+  const countEl = document.getElementById('memoryCount')
+  try {
+    const d = await (await fetch(`${API}/memory`)).json()
+    const items = d.memories || []
+    countEl.textContent = String(items.length)
+    listEl.innerHTML = ''
+    if (!items.length) {
+      listEl.innerHTML = '<div class="empty-state">Aún no tengo recuerdos guardados.</div>'
+      return
+    }
+    for (const m of items) {
+      const row = document.createElement('div')
+      row.className = 'list-row'
+      const main = document.createElement('div')
+      main.className = 'list-row-main'
+      const title = document.createElement('div')
+      title.className = 'list-row-title'
+      title.textContent = m.content
+      const meta = document.createElement('div')
+      meta.className = 'list-row-meta'
+      meta.textContent = m.created_at || ''
+      main.appendChild(title)
+      main.appendChild(meta)
+      const del = document.createElement('button')
+      del.className = 'icon-btn danger'
+      del.textContent = '✕'
+      del.title = 'Olvidar'
+      del.addEventListener('click', async () => {
+        await fetch(`${API}/memory/${m.id}`, { method: 'DELETE' })
+        showToast('Recuerdo eliminado')
+        loadMemories()
+      })
+      row.appendChild(main)
+      row.appendChild(del)
+      listEl.appendChild(row)
+    }
+  } catch {
+    listEl.innerHTML = '<div class="empty-state">Error al cargar recuerdos.</div>'
+  }
+}
+
+async function saveMemory() {
+  const inp = document.getElementById('memoryInput')
+  const content = inp.value.trim()
+  if (!content) return
+  try {
+    const r = await fetch(`${API}/memory/remember`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    })
+    if (r.ok) {
+      inp.value = ''
+      showToast('Recuerdo guardado 🧠')
+      loadMemories()
+    }
+  } catch { showToast('Error al guardar') }
+}
+
+document.getElementById('addMemoryBtn').addEventListener('click', saveMemory)
+document.getElementById('memoryInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveMemory()
+})
+
+// ── Boot ────────────────────────────────────────────────
+loadConfig().then(() => {
+  checkStatus()
+  loadHistory()
+  setTimeout(() => inputEl.focus(), 200)
+})
+setInterval(checkStatus, 10000)
 </script>
 </body>
 </html>

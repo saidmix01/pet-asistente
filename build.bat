@@ -1,61 +1,36 @@
 @echo off
+setlocal
 echo ============================================
-echo  Pet Asistente - Build Completo
+echo  Pet Asistente - Build Completo (Windows)
 echo ============================================
 echo.
 
-set PYTHON_EXE=C:\Users\Developer\AppData\Local\Programs\Python\Python314\python.exe
-
-:: 1. Install PyInstaller
-echo [1/4] Instalando PyInstaller...
-"%PYTHON_EXE%" -m pip install pyinstaller --quiet
+where node >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] No se pudo instalar PyInstaller
+    echo [ERROR] No se encontro Node.js en PATH.
     pause
     exit /b 1
 )
-echo [OK]
-echo.
 
-:: 2. Build backend exe
-echo [2/4] Compilando backend (Python → exe)...
-cd backend
-"%PYTHON_EXE%" -m PyInstaller asistente-core.spec --noconfirm --clean
+echo [1/2] Compilando backend (Python -^> asistente-core.exe)...
+node scripts\build-backend.js
 if errorlevel 1 (
-    echo [ERROR] Fallo la compilacion del backend
+    echo [ERROR] Fallo la compilacion del backend.
     pause
     exit /b 1
 )
-cd ..
-echo [OK] backend\dist\asistente-core.exe
 echo.
 
-:: 3. Install electron-builder
-echo [3/4] Instalando dependencias de build...
-cd desktop
-call npm install --save-dev electron-builder
-if errorlevel 1 (
-    echo [ERROR] Fallo npm install electron-builder
-    pause
-    exit /b 1
-)
-cd ..
-echo [OK]
-echo.
-
-:: 4. Build installer
-echo [4/4] Creando instalador de Windows...
-cd desktop
+echo [2/2] Compilando renderer y creando instalador de Windows...
 set CSC_IDENTITY_AUTO_DISCOVERY=false
-call npm run dist
+call npm run pack:win
 if errorlevel 1 (
-    echo [ERROR] Fallo electron-builder
+    echo [ERROR] Fallo electron-builder.
     pause
     exit /b 1
 )
-cd ..
-echo.
 
+echo.
 echo ============================================
 echo  Build completo!
 echo  Instalador en: desktop\release\

@@ -63,7 +63,25 @@ def set_deepseek_token(token: str) -> None:
     set_config("deepseek_token", token)
 
 def get_ai_mode() -> str:
-    return get_config("ai_mode", "local")
+    return get_config("ai_mode", "antigravity")
 
 def set_ai_mode(mode: str) -> None:
     set_config("ai_mode", mode)
+
+def get_simulate_activity() -> bool:
+    return get_config("simulate_activity", "false").lower() == "true"
+
+def set_simulate_activity(enabled: bool) -> None:
+    set_config("simulate_activity", "true" if enabled else "false")
+
+def get_sound_muted() -> bool:
+    return get_config("sound_muted", "false").lower() == "true"
+
+def set_sound_muted(muted: bool) -> None:
+    set_config("sound_muted", "true" if muted else "false")
+
+def get_ai_autonomy() -> bool:
+    return get_config("ai_autonomy", "true").lower() == "true"
+
+def set_ai_autonomy(enabled: bool) -> None:
+    set_config("ai_autonomy", "true" if enabled else "false")

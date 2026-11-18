@@ -16,13 +16,9 @@ from integrations.task_tracker import TaskTracker
 from services.logger import info, warning, error
 
 
-def _get_data_dir() -> str:
-    if getattr(sys, 'frozen', False) and os.name == 'nt':
-        base = os.environ.get('APPDATA', os.path.expanduser('~'))
-        return os.path.join(base, 'pet-asistente', 'data')
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+from db.database import get_data_dir
 
-REPORTS_DIR = os.path.join(_get_data_dir(), "daily_reports")
+REPORTS_DIR = os.path.join(get_data_dir(), "daily_reports")
 
 
 class AutoReport:
@@ -95,11 +91,25 @@ class AutoReport:
         # 4. Generate text report
         text_report = generate_report(today)
 
-        # 5. Try AI enhancement
-        from services.ai import is_ollama_available, enhance_daily_report
+        # 5. Try AI enhancement using configured provider
+        from services.ai import (
+            is_antigravity_available,
+            is_ollama_available,
+            is_deepseek_configured,
+            enhance_daily_report,
+        )
+        from services.config_store import get_ai_mode, get_deepseek_token
+
+        ai_mode = get_ai_mode()
+        deepseek_token = get_deepseek_token()
+        ai_ready = (
+            (ai_mode == "antigravity" and is_antigravity_available())
+            or (ai_mode == "local" and is_ollama_available())
+            or (ai_mode == "remote" and is_deepseek_configured(deepseek_token))
+        )
 
         ai_enhanced = None
-        if is_ollama_available():
+        if ai_ready:
             try:
                 ai_data = {
                     "date": today,
@@ -108,7 +118,11 @@ class AutoReport:
                     "time_summary": time_data,
                     "raw_text": text_report,
                 }
-                ai_enhanced = enhance_daily_report(ai_data)
+                ai_enhanced = enhance_daily_report(
+                    ai_data,
+                    mode=ai_mode,
+                    api_token=deepseek_token,
+                )
             except Exception:
                 pass
 
@@ -128,14 +142,14 @@ class AutoReport:
         filename = f"report_{today}.json"
         filepath = os.path.join(REPORTS_DIR, filename)
 
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
 
         info(f"Daily report saved: {filepath}")
 
         # Also save a plaintext version
         txt_path = os.path.join(REPORTS_DIR, f"report_{today}.txt")
-        with open(txt_path, "w") as f:
+        with open(txt_path, "w", encoding="utf-8") as f:
             f.write(text_report)
 
         return filepath
@@ -147,7 +161,7 @@ class AutoReport:
         target = report_date or date.today().isoformat()
         filepath = os.path.join(REPORTS_DIR, f"report_{target}.json")
         if os.path.exists(filepath):
-            with open(filepath) as f:
+            with open(filepath, encoding="utf-8") as f:
                 return json.load(f)
         return None
 

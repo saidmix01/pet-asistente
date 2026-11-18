@@ -9,16 +9,18 @@
     "email": "saidavendano@artistshot.com"
   },
   "scripts": {
-    "install:all": "cd desktop && npm install && cd renderer && npm install",
-    "dev:backend": "cd backend && python main.py",
-    "dev:desktop": "cd desktop && npm run dev",
-    "dev": "npm run dev:desktop",
-    "build:renderer": "cd desktop && npm run build:renderer",
-    "build:backend": "cd backend && pyinstaller --onefile --name asistente-core --add-data \".venv/lib/python3.14/site-packages:./\" main.py",
+    "install:all": "node scripts/install-all.js",
+    "dev:backend": "node scripts/run-backend.js",
+    "dev:desktop": "npm --prefix desktop run dev",
+    "dev": "npm --prefix desktop run dev",
+    "build:renderer": "npm --prefix desktop run build:renderer",
+    "build:backend": "node scripts/build-backend.js",
     "build": "npm run build:renderer && npm run build:backend",
-    "pack": "npx electron-builder",
+    "pack": "npm --prefix desktop run dist",
+    "pack:win": "npm --prefix desktop run dist:win",
+    "pack:linux": "npm --prefix desktop run dist:linux",
     "release": "npm run build && npm run pack",
-    "start": "cd desktop && npm run start"
+    "start": "npm --prefix desktop run start"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

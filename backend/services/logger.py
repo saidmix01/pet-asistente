@@ -6,13 +6,17 @@ import os
 import sys
 from datetime import datetime, timezone
 
-# Log file in AppData (persistent, easy to find)
+# Log file in AppData (Windows) or XDG data dir (Linux/macOS) when frozen
 def _get_log_path() -> str:
-    if getattr(sys, 'frozen', False) and os.name == 'nt':
-        base = os.environ.get('APPDATA', os.path.expanduser('~'))
+    if getattr(sys, 'frozen', False):
+        if os.name == 'nt':
+            base = os.environ.get('APPDATA', os.path.expanduser('~'))
+        else:
+            base = os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share'))
+        log_dir = os.path.join(base, 'pet-asistente', 'logs')
     else:
         base = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-    log_dir = os.path.join(base, 'pet-asistente', 'logs') if getattr(sys, 'frozen', False) else os.path.join(base, 'logs')
+        log_dir = os.path.join(base, 'logs')
     os.makedirs(log_dir, exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
     return os.path.join(log_dir, f"pet-{today}.log")

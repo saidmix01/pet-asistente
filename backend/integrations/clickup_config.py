@@ -10,18 +10,10 @@ from typing import Any
 from services.logger import info
 
 
-def _get_data_dir() -> str:
-    if getattr(sys, 'frozen', False):
-        if os.name == 'nt':
-            base = os.environ.get('APPDATA', os.path.expanduser('~'))
-        else:
-            base = os.path.expanduser('~/.local/share')
-        return os.path.join(base, 'pet-asistente', 'data')
-    else:
-        return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+from db.database import get_data_dir
 
 
-CONFIG_DIR = _get_data_dir()
+CONFIG_DIR = get_data_dir()
 CONFIG_PATH = os.path.join(CONFIG_DIR, "clickup_config.json")
 TOKEN_PATH = os.path.join(CONFIG_DIR, "clickup_token.txt")
 
@@ -41,11 +33,13 @@ def load_token() -> str | None:
     for path in [TOKEN_PATH, CONFIG_PATH]:
         if os.path.exists(path):
             if path.endswith(".txt"):
-                token = open(path).read().strip()
+                with open(path, encoding="utf-8") as f:
+                    token = f.read().strip()
                 if token:
                     return token
             elif path.endswith(".json"):
-                data = json.load(open(path))
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
                 token = data.get("token", "")
                 if token:
                     return token
@@ -62,7 +56,7 @@ def save_token(token: str) -> None:
         pass
     # Also save to file as backup
     os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(TOKEN_PATH, "w") as f:
+    with open(TOKEN_PATH, "w", encoding="utf-8") as f:
         f.write(token.strip())
     info("ClickUp token saved")
 

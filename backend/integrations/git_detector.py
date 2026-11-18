@@ -114,9 +114,13 @@ class GitDetector:
             branch = self._run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD")
 
             # Recent commits (last 30 days)
-            since = " --since='30 days ago'"
-            log_cmd = f"log --oneline --since='30 days ago' --format='%h|%s|%ci|%an' -20"
-            raw_log = self._run_git(repo_path, *log_cmd.split())
+            raw_log = self._run_git(
+                repo_path,
+                "log",
+                "--since=30 days ago",
+                "--format=%h|%s|%ci|%an",
+                "-20",
+            )
 
             commits = []
             if raw_log:
@@ -131,7 +135,7 @@ class GitDetector:
                         })
 
             # Remote URL
-            remote = self._run_git(repo_path, "remote", "get-url", "origin") or ""
+            remote = (self._run_git(repo_path, "remote", "get-url", "origin") or "").strip()
 
             # Determine project name from remote or path
             if remote:
@@ -159,6 +163,8 @@ class GitDetector:
                 "cwd": str(repo_path),
                 "capture_output": True,
                 "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
                 "timeout": 5,
             }
             # Hide console window on Windows
@@ -199,3 +205,83 @@ class GitDetector:
                 })
 
         return active
+
+    # ── Live Git Watcher ──────────────────────────────────────────────
+
+    def check_live_events(self) -> list[dict]:
+        """
+        Poll repositories for new commits or long-standing uncommitted changes.
+        Returns list of event dicts:
+        {"event": "git.commit", "data": {"project": ..., "hash": ..., "message": ...}}
+        {"event": "git.uncommitted", "data": {"project": ..., "count": ...}}
+        """
+        if not hasattr(self, "_repo_states"):
+            self._repo_states: dict[str, dict] = {}
+
+        if not self._findings:
+            self.scan()
+
+        events = []
+        for repo in self._findings[:10]:  # monitor active repos
+            path_str = repo["path"]
+            repo_path = Path(path_str)
+            if not repo_path.exists():
+                continue
+
+            # Fast path: check if .git HEAD or index timestamps changed
+            git_dir = repo_path / ".git"
+            mtime = 0.0
+            try:
+                head_file = git_dir / "HEAD"
+                index_file = git_dir / "index"
+                if head_file.exists():
+                    mtime = max(mtime, head_file.stat().st_mtime)
+                if index_file.exists():
+                    mtime = max(mtime, index_file.stat().st_mtime)
+            except Exception:
+                pass
+
+            prev_state = self._repo_states.get(path_str, {})
+            prev_mtime = prev_state.get("mtime", 0.0)
+            if prev_mtime > 0 and mtime > 0 and mtime == prev_mtime:
+                # No changes on disk, skip spawning subprocesses
+                continue
+            prev_state["mtime"] = mtime
+
+            # 1. Check latest commit hash
+            latest_hash_raw = self._run_git(repo_path, "log", "-1", "--format=%h|%s")
+            if latest_hash_raw and "|" in latest_hash_raw:
+                parts = latest_hash_raw.strip().split("|", 1)
+                curr_hash, curr_msg = parts[0], parts[1]
+                prev_hash = prev_state.get("hash")
+                if prev_hash and curr_hash != prev_hash:
+                    events.append({
+                        "event": "git.commit",
+                        "data": {
+                            "project": repo["project"],
+                            "hash": curr_hash,
+                            "message": curr_msg,
+                            "branch": repo.get("branch", "main"),
+                        },
+                    })
+                prev_state["hash"] = curr_hash
+                self._repo_states[path_str] = prev_state
+
+            # 2. Check uncommitted changes count
+            status_raw = self._run_git(repo_path, "status", "--porcelain")
+            if status_raw is not None:
+                lines = [l for l in status_raw.strip().split("\n") if l.strip()]
+                count = len(lines)
+                prev_count = prev_state.get("uncommitted_count", 0)
+                if count >= 12 and prev_count < 12:
+                    events.append({
+                        "event": "git.uncommitted",
+                        "data": {
+                            "project": repo["project"],
+                            "count": count,
+                        },
+                    })
+                prev_state["uncommitted_count"] = count
+                self._repo_states[path_str] = prev_state
+
+        return events

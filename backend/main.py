@@ -62,8 +62,9 @@ def main() -> None:
 
     # ── Real activity monitoring (cross-platform) ────────────────────
     from core.platform_detector import CrossPlatformTracker, get_os
-    tracker = CrossPlatformTracker(bus, use_simulation_fallback=True)
-    info(f"Activity monitoring active ({get_os().upper()})")
+    from services.config_store import get_simulate_activity
+    tracker = CrossPlatformTracker(bus, use_simulation_fallback=get_simulate_activity())
+    info(f"Activity monitoring active ({get_os().upper()}, simulation_fallback={get_simulate_activity()})")
 
     # Processing layer
     from services.activity_service import ActivityService
@@ -87,11 +88,22 @@ def main() -> None:
     from integrations.auto_report import AutoReport
     auto_report = AutoReport(task_tracker=task_tracker, time_tracker=time_tracker)
 
+    # ── Pet Brain (AI-driven autonomous behaviors & choreography) ────
+    from core.pet_brain import PetBrain
+    pet_brain = PetBrain(state=state, stream=stream, interval_seconds=45.0)
+
     # ── Start internal subsystems ─────────────────────────────────────
     processor.start()
     tracker.start()
     task_tracker.start()
     auto_report.start()
+    pet_brain.start()
+
+    # Notify brain on activity switch
+    bus.subscribe(
+        "activity.switch",
+        lambda _ev, d: pet_brain.notify_event(f"activity_switch:{d.get('activity_type', '')}") if d else None,
+    )
 
     # ── Background notification loop (pomodoro + clickup mentions) ────
     from integrations.pomodoro import check_pomodoro
@@ -110,8 +122,10 @@ def main() -> None:
 
         last_mention_check = 0
         last_overdue_check = 0
+        last_git_check = 0
         MENTION_INTERVAL = 60   # seconds (check every minute)
         OVERDUE_INTERVAL = 300  # seconds
+        GIT_INTERVAL = 20      # seconds (live git watcher)
 
         while True:
             time_module.sleep(10)
@@ -135,6 +149,15 @@ def main() -> None:
                     new_mentions = mention_tracker.check_new_mentions()
                     for m in new_mentions:
                         stream.on_event("clickup.mention", m)
+                except Exception:
+                    pass
+
+            # Check Git repositories for live commits and uncommitted alerts
+            if now - last_git_check > GIT_INTERVAL:
+                last_git_check = now
+                try:
+                    for git_ev in git_detector.check_live_events():
+                        stream.on_event(git_ev["event"], git_ev["data"])
                 except Exception:
                     pass
 
@@ -166,10 +189,23 @@ def main() -> None:
     # Inject into AI routes
     import integrations.ai_routes as ai_routes_module
     ai_routes_module.time_tracker = time_tracker
+    ai_routes_module.pet_brain = pet_brain
 
     # Inject into chat routes
     import integrations.chat_routes as chat_routes_module
     chat_routes_module.time_tracker = time_tracker
+    chat_routes_module.pet_brain = pet_brain
+
+    # Inject into config routes
+    import api.config_routes as config_routes_module
+    config_routes_module.pet_brain = pet_brain
+
+    # Inject into voice routes
+    try:
+        import integrations.voice_routes as voice_routes_module
+        voice_routes_module.pet_brain = pet_brain
+    except Exception:
+        pass
 
     app = create_app(state=state, stream=stream)
 

@@ -8,22 +8,22 @@ import sys
 from services.logger import info
 
 
-def _get_data_dir() -> str:
-    """Get persistent data directory. Uses AppData on Windows when running as exe."""
+def get_data_dir() -> str:
+    """Get persistent data directory. Uses AppData on Windows and XDG data dir on Linux/macOS when frozen."""
     # If running as PyInstaller bundle, use a persistent location
     if getattr(sys, 'frozen', False):
-        # Running as compiled exe
         if os.name == 'nt':
             base = os.environ.get('APPDATA', os.path.expanduser('~'))
         else:
-            base = os.path.expanduser('~/.local/share')
+            base = os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share'))
         return os.path.join(base, 'pet-asistente', 'data')
     else:
         # Running as script (dev mode)
         return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
 
-DB_DIR = _get_data_dir()
+_get_data_dir = get_data_dir
+DB_DIR = get_data_dir()
 DB_PATH = os.path.join(DB_DIR, "work_assistant.db")
 
 
@@ -62,6 +62,10 @@ def init_db() -> None:
             created_at TEXT DEFAULT (datetime('now')),
             active INTEGER DEFAULT 1
         );
+
+        CREATE INDEX IF NOT EXISTS idx_activities_time ON activities(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_activities_session ON activities(session_id);
+        CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type);
     """)
     conn.commit()
     conn.close()

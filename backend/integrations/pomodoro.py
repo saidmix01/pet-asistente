@@ -52,9 +52,9 @@ async def get_status():
     """Get current pomodoro state."""
     s = _pomodoro_state
     now = time.time()
-    elapsed = s["elapsed"]
+    elapsed = s["paused_elapsed"] if s["paused"] else s["elapsed"]
     if s["active"] and not s["paused"] and s["started_at"]:
-        elapsed = now - s["started_at"]
+        elapsed = s["paused_elapsed"] + (now - s["started_at"])
 
     remaining = max(0, s["duration"] - elapsed)
 
@@ -104,6 +104,34 @@ async def start_pomodoro(req: PomodoroStartRequest):
     return {"message": f"Pomodoro iniciado: {req.duration_minutes} min", "phase": req.phase}
 
 
+@router.post("/pause")
+async def pause_pomodoro():
+    """Pause the current pomodoro."""
+    s = _pomodoro_state
+    if not s["active"]:
+        raise HTTPException(400, "No hay pomodoro activo")
+    if s["paused"]:
+        return {"message": "Pomodoro ya pausado", "paused": True}
+    if s["started_at"]:
+        s["paused_elapsed"] += time.time() - s["started_at"]
+    s["started_at"] = None
+    s["paused"] = True
+    return {"message": "Pomodoro pausado", "paused": True}
+
+
+@router.post("/resume")
+async def resume_pomodoro():
+    """Resume a paused pomodoro."""
+    s = _pomodoro_state
+    if not s["active"]:
+        raise HTTPException(400, "No hay pomodoro activo")
+    if not s["paused"]:
+        return {"message": "Pomodoro ya en marcha", "paused": False}
+    s["started_at"] = time.time()
+    s["paused"] = False
+    return {"message": "Pomodoro reanudado", "paused": False}
+
+
 @router.post("/stop")
 async def stop_pomodoro():
     """Stop the current pomodoro."""
@@ -114,6 +142,9 @@ async def stop_pomodoro():
     s["active"] = False
     s["phase"] = "idle"
     s["started_at"] = None
+    s["paused"] = False
+    s["paused_elapsed"] = 0.0
+    s["elapsed"] = 0.0
 
     # Mark incomplete in DB
     conn = get_connection()
@@ -151,13 +182,19 @@ def check_pomodoro() -> dict | None:
         return None
 
     now = time.time()
-    elapsed = now - s["started_at"]
+    elapsed = s["paused_elapsed"] + (now - s["started_at"])
 
     if elapsed >= s["duration"]:
+        prev_phase = s["phase"]
         # Session complete
         s["active"] = False
         s["phase"] = "idle"
-        s["session_count"] += 1
+        s["started_at"] = None
+        s["paused"] = False
+        s["paused_elapsed"] = 0.0
+        s["elapsed"] = 0.0
+        if prev_phase == "focus":
+            s["session_count"] += 1
 
         # Mark complete in DB
         conn = get_connection()
@@ -174,7 +211,7 @@ def check_pomodoro() -> dict | None:
         return {
             "completed": True,
             "session_count": s["session_count"],
-            "suggest": "break" if s["phase"] == "focus" else "focus",
+            "suggest": "break" if prev_phase == "focus" else "focus",
         }
 
     return None

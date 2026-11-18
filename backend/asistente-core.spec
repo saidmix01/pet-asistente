@@ -1,20 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import sys
+from PyInstaller.utils.hooks import collect_data_files
 
 # Collect all .py files from the project
 def collect_project_files():
     """Collect all Python source files as data files for PyInstaller."""
     datas = []
+    skip_dirs = {'build', 'dist', '.venv', 'venv', '__pycache__', '.git', 'data', 'memory'}
     for root, dirs, files in os.walk('.'):
-        # Skip build/dist/venv directories
-        if any(skip in root for skip in ['build', 'dist', '.venv', '__pycache__', '.git']):
-            continue
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
         for f in files:
             if f.endswith('.py'):
                 src = os.path.join(root, f)
                 dst = root if root != '.' else '.'
                 datas.append((src, dst))
+    try:
+        datas += collect_data_files('certifi')
+    except Exception:
+        pass
     return datas
 
 a = Analysis(
@@ -85,6 +89,7 @@ a = Analysis(
         'core.processor',
         'core.system_state',
         'core.activity_tracker',
+        'core.pet_brain',
         'api',
         'api.routes',
         'api.server',
@@ -144,7 +149,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=(sys.platform != 'win32'),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

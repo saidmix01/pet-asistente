@@ -20,12 +20,13 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Injected by main.py
 time_tracker = None
+pet_brain = None
 
 
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
-    mode: str = "local"
+    mode: str = "antigravity"
     api_token: str = ""
     assistant_name: str = "Pet"
 
@@ -36,14 +37,16 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/send")
-async def chat_send(req: ChatRequest):
+def chat_send(req: ChatRequest):
     """Send a message and get AI response. Saves both to history."""
     if not req.message.strip():
         raise HTTPException(400, "Mensaje vacío")
 
-    from services.ai import is_ollama_available, is_deepseek_configured
+    from services.ai import is_antigravity_available, is_ollama_available, is_deepseek_configured
+    if req.mode == "antigravity" and not is_antigravity_available():
+        return {"response": "⚠️ Antigravity CLI (`agy`) no encontrado. Instalalo con: curl -fsSL https://antigravity.google/cli/install.sh | bash (Linux) o irm https://antigravity.google/cli/install.ps1 | iex (Windows) y ejecutá `agy` para iniciar sesión."}
     if req.mode == "local" and not is_ollama_available():
-        return {"response": "⚠️ Ollama no está disponible. Usá mode=remote con un token de DeepSeek."}
+        return {"response": "⚠️ Ollama no está disponible. Probá con Antigravity CLI o DeepSeek en Ajustes."}
     if req.mode == "remote" and not is_deepseek_configured(req.api_token):
         return {"response": "⚠️ Modo remoto requiere un token de DeepSeek. Configuralo en Ajustes."}
 
@@ -63,15 +66,20 @@ async def chat_send(req: ChatRequest):
     today_info = _get_today_context()
     memory_info = _get_memory_context()
     assistant_name = req.assistant_name or _get_assistant_name()
-    system = f"""Eres {assistant_name}, una mascota virtual asistente de trabajo.
+    system = f"""Eres {assistant_name}, un leal pug pixel-art y asistente de trabajo virtual que vive en el escritorio del usuario.
 Hoy es {date.today().isoformat()}.
 Contexto del día:
 {today_info}
 {memory_info}
-Respondé de forma concisa y amigable, en español.
-Si preguntan por tareas, proyectos, qué tengo para hoy, o tiempo trabajado, listá la información disponible.
-Si el usuario te pide que recuerdes algo, confirmá que lo guardaste.
-Máximo 100 palabras por respuesta."""
+Respondé de forma concisa y amigable, en español (máximo 80 palabras).
+Si el usuario te pide una orden física (ej: salta, sube un escalón, baja al suelo, trepa a mi ventana, busca la pelota, come un snack, ven, siéntate, duérmete, muévete, olfatea, camina) o celebras con él, puedes incluir al final de tu respuesta una etiqueta con la acción física que realizarás:
+- Para saltar y quedar sobre un escalón/plataforma elevada: usa "action": "jump_up" (o "jump")
+- Para descender un escalón: usa "action": "jump_down"
+- Para bajar todo de vuelta al suelo: usa "action": "reset_step"
+- Para trepar sobre la ventana activa del usuario: usa "action": "climb_window"
+- Para jugar a traer la pelota: usa "action": "fetch_ball"
+- Para comer un snack o premio: usa "action": "feed_snack"
+[ACTION: {{"action": "jump_up" | "jump_down" | "reset_step" | "climb_window" | "fetch_ball" | "feed_snack" | "jump" | "sit" | "walk" | "run" | "sniff" | "sniffwalk" | "idle", "direction": "left" | "right" | "keep", "move_to": "left" | "center" | "right" | null, "sound": "none" | "ladrido" | "ronquido", "mood": "playful" | "focused" | "happy" | "sleepy" | "calm"}}]"""
 
     messages.insert(0, {"role": "system", "content": system})
 
@@ -82,12 +90,21 @@ Máximo 100 palabras por respuesta."""
             api_token=req.api_token,
         )
         response = "😶"
+        action_dispatched = None
         if result and result.get("message", {}).get("content"):
-            response = result["message"]["content"].replace("</think>", "").replace("<think>", "").strip()[:500]
+            raw_text = result["message"]["content"].replace("</think>", "").replace("<think>", "").strip()
+            from core.pet_brain import extract_chat_action
+            clean_text, action = extract_chat_action(raw_text)
+            response = clean_text[:500] if clean_text else "🐾"
+            if action and pet_brain:
+                try:
+                    action_dispatched = pet_brain.dispatch_action(action)
+                except Exception:
+                    pass
 
         # Save assistant response
         save_message(req.session_id, "assistant", response)
-        return {"response": response}
+        return {"response": response, "action": action_dispatched}
 
     except Exception as e:
         response = f"Error: {e}"

@@ -32,7 +32,6 @@ async def get_status():
 
 
 @router.post("/connect")
-@router.post("/connect")
 async def connect(req: ConnectRequest):
     """Connect to ClickUp with a personal API token."""
     if clickup_service is None:

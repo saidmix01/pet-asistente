@@ -60,6 +60,16 @@ async def get_summary():
     return {"date_summary": data}
 
 
+@router.get("/active-window")
+async def get_active_window():
+    """Return active window geometry and details for window climbing."""
+    from core.platform_detector import get_active_window_geometry
+    geom = get_active_window_geometry()
+    if not geom:
+        return {"active": False}
+    return {"active": True, **geom}
+
+
 # ── WebSocket endpoint ───────────────────────────────────────────────
 
 

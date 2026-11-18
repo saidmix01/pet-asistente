@@ -11,6 +11,9 @@ from services.config_store import (
     get_clickup_token, set_clickup_token,
     get_deepseek_token, set_deepseek_token,
     get_ai_mode, set_ai_mode,
+    get_simulate_activity, set_simulate_activity,
+    get_sound_muted, set_sound_muted,
+    get_ai_autonomy, set_ai_autonomy,
 )
 from services.pet_memory import (
     remember, forget, get_memories, search_memories, get_memory_summary,
@@ -18,15 +21,21 @@ from services.pet_memory import (
 
 router = APIRouter(tags=["config"])
 
+# Injected by main.py
+pet_brain = None
+
 
 # ── Config endpoints ──────────────────────────────────────────
 
 
 class SaveConfigRequest(BaseModel):
     assistantName: str = "Pet"
-    aiMode: str = "local"
+    aiMode: str = "antigravity"
     deepseekToken: str = ""
     clickupToken: str = ""
+    simulateActivity: bool = False
+    soundMuted: bool = False
+    aiAutonomy: bool = True
 
 
 @router.get("/config")
@@ -37,6 +46,9 @@ async def get_full_config():
         "aiMode": get_ai_mode(),
         "deepseekToken": get_deepseek_token(),
         "clickupToken": get_clickup_token(),
+        "simulateActivity": get_simulate_activity(),
+        "soundMuted": get_sound_muted(),
+        "aiAutonomy": get_ai_autonomy(),
     }
 
 
@@ -45,6 +57,9 @@ async def save_full_config(req: SaveConfigRequest):
     """Save all config values at once."""
     set_assistant_name(req.assistantName)
     set_ai_mode(req.aiMode)
+    set_simulate_activity(req.simulateActivity)
+    set_sound_muted(req.soundMuted)
+    set_ai_autonomy(req.aiAutonomy)
     if req.deepseekToken:
         set_deepseek_token(req.deepseekToken)
     if req.clickupToken:

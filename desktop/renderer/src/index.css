@@ -3,6 +3,7 @@ body,
 #root {
   width: 100%;
   height: 100%;
+  background: transparent !important;
 }
 
 body {
@@ -30,37 +31,69 @@ body {
   touch-action: none;
   cursor: grab;
   image-rendering: pixelated;
+  outline: none;
+}
+
+.pet:focus {
+  outline: none;
 }
 
 .pet:active {
   cursor: grabbing;
 }
 
+.wayland-drag-handle {
+  position: fixed;
+  bottom: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(20, 20, 32, 0.55);
+  color: #fff;
+  font-size: 13px;
+  line-height: 22px;
+  text-align: center;
+  cursor: grab;
+  -webkit-app-region: drag;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 300;
+}
+
+.stage:hover .wayland-drag-handle,
+.wayland-drag-handle:hover {
+  opacity: 0.85;
+}
+
 /* ── Speech bubble ───────────────────────────────────── */
 .speech-bubble {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: #fff;
-  border: 1.5px solid #666;
-  border-radius: 10px;
-  padding: 6px 12px;
-  font-size: 10px;
+  background: rgba(15, 20, 36, 0.94);
+  border: 1.5px solid rgba(129, 140, 248, 0.5);
+  border-radius: 12px;
+  padding: 7px 13px;
+  font-size: 11px;
+  font-weight: 500;
   line-height: 1.4;
-  color: #222;
+  color: #f8fafc;
   text-align: center;
   white-space: normal;
   overflow-wrap: break-word;
   word-wrap: break-word;
-  max-width: 340px;
-  min-width: 120px;
+  max-width: 260px;
+  min-width: 110px;
+  box-sizing: border-box;
   max-height: none;
   width: auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   opacity: 0;
-  transition: opacity 0.2s ease-in;
+  transition: opacity 0.2s ease-out;
   pointer-events: none;
   z-index: 200;
 }
@@ -74,7 +107,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: #fff;
+  border-top-color: rgba(15, 20, 36, 0.94);
 }
 .speech-bubble::before {
   content: '';
@@ -83,6 +116,116 @@ body {
   left: 50%;
   transform: translateX(-50%);
   border: 8px solid transparent;
-  border-top-color: #666;
+  border-top-color: rgba(129, 140, 248, 0.5);
   margin-top: 0.5px;
+}
+
+/* ── Elevated Step Platform ──────────────────────────── */
+.step-platform {
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 76px;
+  height: 12px;
+  pointer-events: none;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0;
+  transform-origin: center top;
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.step-platform.visible {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+.platform-beam {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(129, 140, 248, 0.95), rgba(168, 85, 247, 0.95), rgba(99, 102, 241, 0.15));
+  box-shadow: 0 0 10px rgba(129, 140, 248, 0.7), 0 2px 4px rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.platform-dots {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.platform-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #a5b4fc;
+  box-shadow: 0 0 4px #818cf8;
+}
+
+/* ── Floating Heart Particles (Caricias) ─────────────── */
+.heart-particles {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  font-size: 15px;
+  pointer-events: none;
+  z-index: 210;
+  animation: heartsFloatUp 2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes heartsFloatUp {
+  0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.6); }
+  25% { opacity: 1; transform: translateX(-50%) translateY(0px) scale(1.15); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-36px) scale(1); }
+}
+
+/* ── Snack Drop Animation ────────────────────────────── */
+.snack-drop {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  pointer-events: none;
+  z-index: 210;
+  animation: snackBounce 1.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes snackBounce {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-25px) scale(0.5); }
+  35% { opacity: 1; transform: translateX(-50%) translateY(28px) scale(1.2); }
+  65% { opacity: 1; transform: translateX(-50%) translateY(20px) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(26px) scale(0); }
+}
+
+/* ── Ball Fetch Actor ────────────────────────────────── */
+.tennis-ball-actor {
+  position: absolute;
+  top: 34px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  z-index: 60;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+  animation: ballWiggle 0.6s ease infinite;
+}
+
+@keyframes ballWiggle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.speech-bubble.clickable {
+  cursor: pointer;
+  pointer-events: auto !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4) !important;
 }

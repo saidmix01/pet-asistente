@@ -122,5 +122,11 @@ def create_app(
     app.include_router(chat_router)
     app.include_router(pomodoro_router)
     app.include_router(mentions_router)
+    try:
+        from integrations.voice_routes import router as voice_router
+        app.include_router(voice_router)
+        info("voice_routes loaded OK")
+    except Exception as e:
+        info(f"WARNING: voice_routes not available: {e}")
 
     return app

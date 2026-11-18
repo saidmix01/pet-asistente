@@ -13,22 +13,16 @@ from integrations.clickup_config import load_token
 from integrations.clickup_db import get_cached_tasks
 from services.logger import info, warning, error
 
-import sys
+from db.database import get_data_dir
 
-def _get_data_dir() -> str:
-    if getattr(sys, 'frozen', False) and os.name == 'nt':
-        base = os.environ.get('APPDATA', os.path.expanduser('~'))
-        return os.path.join(base, 'pet-asistente', 'data')
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-
-DATA_DIR = _get_data_dir()
+DATA_DIR = get_data_dir()
 STATE_FILE = os.path.join(DATA_DIR, "mentions_state.json")
 
 
 def _load_state() -> dict:
     try:
         if os.path.exists(STATE_FILE):
-            with open(STATE_FILE) as f:
+            with open(STATE_FILE, encoding="utf-8") as f:
                 return json.load(f)
     except Exception:
         pass
@@ -37,7 +31,7 @@ def _load_state() -> dict:
 
 def _save_state(state: dict) -> None:
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    with open(STATE_FILE, "w") as f:
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 
