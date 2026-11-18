@@ -44,6 +44,9 @@ linux:
   target:
     - AppImage
     - deb
+  executableArgs:
+    - "--ozone-platform=x11"
+    - "--enable-transparent-visuals"
   icon: assets/icon.png
   category: Utility
   artifactName: ${productName}-${version}-${arch}.${ext}

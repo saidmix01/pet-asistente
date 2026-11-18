@@ -4,14 +4,26 @@ const fs = require('fs')
 const { spawn, execSync } = require('child_process')
 const http = require('http')
 
-// ── Linux graphics compatibility ───────────────────────────
-// Must run before app.whenReady(). Keep GPU compositing enabled by default so
-// ARGB alpha transparency renders cleanly without an opaque box; pass
-// PET_DISABLE_GPU=1 only if a driver needs software rendering.
-// Note: Do NOT call app.commandLine.appendSwitch('ozone-platform', ...) here;
-// in Electron 42+ Ozone is initialized before main.js runs, so changing it late
-// causes a browser/GPU process mismatch. Pass --ozone-platform via CLI instead.
+// ── Linux graphics & transparency compatibility ─────────────
 if (process.platform === 'linux') {
+  // If we have an X11 display (native X11 or XWayland) and ozone-platform was not passed,
+  // re-spawn with --ozone-platform=x11 and --enable-transparent-visuals.
+  // This guarantees true ARGB transparency with zero window borders, boxes, shadows, or compositor blur.
+  const hasOzone = process.argv.some((a) => a.startsWith('--ozone-platform'))
+  if (!hasOzone && process.env.DISPLAY) {
+    const child = spawn(
+      process.execPath,
+      ['--ozone-platform=x11', '--enable-transparent-visuals', ...process.argv.slice(1)],
+      {
+        detached: true,
+        stdio: 'inherit',
+        env: process.env,
+      }
+    )
+    child.unref()
+    process.exit(0)
+  }
+
   app.commandLine.appendSwitch('enable-transparent-visuals')
   if (process.env.PET_DISABLE_GPU === '1') {
     app.disableHardwareAcceleration()
@@ -344,10 +356,44 @@ function enableLinuxX11Overlay(win) {
     if (!buf || buf.length < 4) return
     const wid = buf.readUInt32LE(0)
     if (!wid) return
-    const helper = path.join(__dirname, '..', 'scripts', 'set-x11-overlay.py')
-    if (!fs.existsSync(helper)) return
+
+    const inlinePy = `
+import ctypes, sys
+try:
+    wid = int(sys.argv[1], 0)
+    class XSetWindowAttributes(ctypes.Structure):
+        _fields_ = [
+            ('background_pixmap', ctypes.c_ulong), ('background_pixel', ctypes.c_ulong),
+            ('border_pixmap', ctypes.c_ulong), ('border_pixel', ctypes.c_ulong),
+            ('bit_gravity', ctypes.c_int), ('win_gravity', ctypes.c_int),
+            ('backing_store', ctypes.c_int), ('backing_planes', ctypes.c_ulong),
+            ('backing_pixel', ctypes.c_ulong), ('save_under', ctypes.c_int),
+            ('event_mask', ctypes.c_long), ('do_not_propagate_mask', ctypes.c_long),
+            ('override_redirect', ctypes.c_int), ('colormap', ctypes.c_ulong),
+            ('cursor', ctypes.c_ulong)
+        ]
+    xlib = ctypes.cdll.LoadLibrary('libX11.so.6')
+    xlib.XOpenDisplay.restype = ctypes.c_void_p
+    dpy = xlib.XOpenDisplay(None)
+    if dpy:
+        attrs = XSetWindowAttributes()
+        attrs.override_redirect = 1
+        xlib.XUnmapWindow(dpy, wid)
+        xlib.XSync(dpy, 0)
+        xlib.XChangeWindowAttributes(dpy, wid, 1 << 9, ctypes.byref(attrs))
+        xlib.XMapRaised(dpy, wid)
+        xlib.XSync(dpy, 0)
+        xlib.XCloseDisplay(dpy)
+        sys.exit(0)
+except Exception:
+    sys.exit(1)
+`
     const { spawnSync } = require('child_process')
-    const res = spawnSync('python3', [helper, String(wid)], { stdio: 'ignore', timeout: 2000 })
+    const pyCmd = getPythonCommand()
+    let res = spawnSync(pyCmd, ['-c', inlinePy, String(wid)], { stdio: 'ignore', timeout: 2000 })
+    if (res.status !== 0) {
+      res = spawnSync('python3', ['-c', inlinePy, String(wid)], { stdio: 'ignore', timeout: 2000 })
+    }
     if (res.status === 0) {
       console.log(`[Pet] Linux X11 override_redirect overlay enabled (wid=0x${wid.toString(16)})`)
     }
@@ -408,7 +454,7 @@ function createWindow() {
     roundedCorners: false,
     thickFrame: false,
     focusable: true,
-    ...(process.platform === 'linux' && !isLinuxWayland ? { type: 'utility' } : {}),
+    ...(process.platform === 'linux' && !isLinuxWayland ? { type: 'dock' } : {}),
     backgroundColor: '#00000000',
     ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {

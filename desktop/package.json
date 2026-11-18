@@ -61,6 +61,10 @@
         "AppImage",
         "deb"
       ],
+      "executableArgs": [
+        "--ozone-platform=x11",
+        "--enable-transparent-visuals"
+      ],
       "icon": "assets/icon.png",
       "category": "Utility",
       "maintainer": "Said Avendaño <saidavendano@artistshot.com>"
