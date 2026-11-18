@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "Desktop pet assistant with ClickUp integration",
+  "homepage": "https://github.com/saidmix01/pet-asistente",
   "author": "Said Avendaño <saidavendano@artistshot.com>",
   "main": "electron/main.js",
   "scripts": {

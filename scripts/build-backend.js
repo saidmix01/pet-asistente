@@ -17,9 +17,15 @@ if (pipDeps.status !== 0) {
 }
 
 console.log('[Build Backend] Compilando asistente-core con PyInstaller...')
+const localLib = path.join(BACKEND_DIR, '.libpython')
+const extraLd = fs.existsSync(localLib) ? `${localLib}:${process.env.LD_LIBRARY_PATH || ''}` : process.env.LD_LIBRARY_PATH
 const build = spawnSync(py, ['-m', 'PyInstaller', 'asistente-core.spec', '--noconfirm', '--clean'], {
   cwd: BACKEND_DIR,
   stdio: 'inherit',
+  env: {
+    ...process.env,
+    ...(extraLd ? { LD_LIBRARY_PATH: extraLd } : {}),
+  },
 })
 if (build.status !== 0) {
   process.exit(build.status || 1)

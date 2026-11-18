@@ -4,3 +4,8 @@ certifi
 websockets
 wsproto
 pydantic>=2.0
+SpeechRecognition>=3.14.0
+python-multipart>=0.0.20
+audioop-lts
+standard-aifc
+standard-chunk

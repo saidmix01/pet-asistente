@@ -4,6 +4,7 @@
   "private": true,
   "main": "desktop/electron/main.js",
   "description": "Desktop pet assistant — Electron frontend + Python backend + Ollama AI",
+  "homepage": "https://github.com/saidmix01/pet-asistente",
   "author": {
     "name": "Said Avendaño",
     "email": "saidavendano@artistshot.com"

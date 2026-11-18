@@ -1,6 +1,7 @@
 appId: com.saidmix.pet-asistente
 productName: Pet Asistente
 copyright: Copyright © 2026 Said Avendaño
+homepage: https://github.com/saidmix01/pet-asistente
 
 directories:
   output: release
