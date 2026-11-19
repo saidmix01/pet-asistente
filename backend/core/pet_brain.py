@@ -67,19 +67,32 @@ Campos JSON obligatorios (RESPONDE ÚNICAMENTE CON UN OBJETO JSON VÁLIDO, SIN M
   "duration_ms": 2500,
   "mood": "happy" | "focused" | "curious" | "playful" | "sleepy" | "alert" | "calm",
   "sound": "none" | "ladrido" | "alerta" | "ronquido",
-  "speech": "Frase corta max 45 caracteres o null si prefiere moverse en silencio",
+  "speech": null,
   "sequence": [
-    {"action": "walk", "direction": "right", "duration_ms": 1800},
-    {"action": "jump_up", "duration_ms": 1400, "speech": "¡A darle! 🪜"}
+    {"action": "walk", "direction": "right", "duration_ms": 1800, "speech": null},
+    {"action": "sit", "duration_ms": 2200, "speech": "¡A darle! 💻", "sound": "none"}
   ]
 }
 
-Reglas:
-- "sequence" es opcional (máx 3 pasos). Úsalo cuando quieras una coreografía natural (ej: caminar y luego sentarse u olfatear).
-- No repitas exactamente la misma acción o frase que hiciste recién.
-- Usa "sound": "none" la mayoría del tiempo (reserva "ladrido" para entusiasmo/celebración y "ronquido" si está sleepy).
-- "speech" puede ser null (~40% de las veces) para que el perrito se vea vivo sin spamear texto todo el rato.
-- "duration_ms" entre 1200 y 6000."""
+REGLAS CRÍTICAS DE DIÁLOGO Y MOVIMIENTO:
+1. LA MASCOTA NUNCA DEBE HABLAR MIENTRAS SE DESPLAZA ("walk", "run", "sniffwalk"). En movimiento el usuario NO puede leer las burbujas.
+2. Diálogos ("speech") deben ir ÚNICAMENTE en posturas estacionarias ("sit", "idle", "idle2", "sniff") tras llegar a su destino.
+3. Si la mascota se desplaza a otro lugar ("move_to" o "walk"/"run"), usa "sequence": primero el paso de movimiento SIN speech, y luego un paso estacionario ("sit" o "idle") CON el speech.
+4. "speech" debe ser null (~50% de las veces) para no saturar de texto la pantalla.
+
+REGLAS CRÍTICAS PARA MODO TRABAJO / CONCENTRACIÓN:
+1. Si la actividad del usuario es "coding" o el Pomodoro está en trabajo/focus:
+   - ¡EL USUARIO ESTÁ CONCENTRADO PROGRAMANDO! NO LO MOLESTES NI LO DISTRAIGAS.
+   - Elige posturas tranquilas de fiel compañero al lado de su ventana: "sit" (sentado tranquilo) o "idle2" (descanso quieto).
+   - "sound": "none" OBLIGATORIO (cero ladridos repentinos durante el trabajo).
+   - "speech": null (máximo silencio, no tapes el código con burbujas de diálogo).
+   - PROHIBIDO correr ("run"), saltar repetitivamente o hacer cruces bruscos por la pantalla durante el trabajo.
+
+Reglas generales:
+- "sequence" es opcional (máx 3 pasos). Úsalo para coreografías naturales (ej: caminar y luego sentarse).
+- No repitas la misma acción consecutivamente.
+- "duration_ms" entre 1200 y 6000.
+- "sound": usa "none" la gran mayoría del tiempo. Reservado para celebraciones."""
 
 
 def _extract_json_object(raw: str | None) -> dict[str, Any] | None:
@@ -187,6 +200,76 @@ def normalize_action(raw: dict[str, Any]) -> dict[str, Any]:
                 "speech": st_speech,
                 "sound": st_sound,
             })
+
+    # ENFORCE RULE 1: Never speak during movement ('walk', 'run', 'sniffwalk', or active move_to).
+    # If speech is placed on a movement step, migrate speech to a stationary step ('sit', 'idle').
+    movement_actions = {"walk", "run", "sniffwalk"}
+
+    # 1. Clean steps inside sequence
+    for i, step in enumerate(clean_seq):
+        if (step["action"] in movement_actions or step.get("move_to")) and step.get("speech"):
+            saved_speech = step["speech"]
+            step["speech"] = None
+            # Find subsequent stationary step or append one
+            subsequent_stationary = next(
+                (s for s in clean_seq[i + 1 :] if s["action"] not in movement_actions and not s.get("move_to")),
+                None,
+            )
+            if subsequent_stationary:
+                if not subsequent_stationary.get("speech"):
+                    subsequent_stationary["speech"] = saved_speech
+            else:
+                clean_seq.append({
+                    "action": "sit",
+                    "direction": "keep",
+                    "move_to": None,
+                    "duration_ms": 2500,
+                    "speech": saved_speech,
+                    "sound": "none",
+                })
+
+    # 2. Top-level action & speech
+    if (action in movement_actions or move_to is not None) and speech:
+        if clean_seq:
+            stationary_step = next(
+                (s for s in clean_seq if s["action"] not in movement_actions and not s.get("move_to")),
+                None,
+            )
+            if stationary_step:
+                if not stationary_step.get("speech"):
+                    stationary_step["speech"] = speech
+            else:
+                clean_seq.append({
+                    "action": "sit",
+                    "direction": "keep",
+                    "move_to": None,
+                    "duration_ms": 2500,
+                    "speech": speech,
+                    "sound": "none",
+                })
+            speech = None
+        else:
+            # Turn into 2-step sequence: move quietly -> sit and speak
+            clean_seq = [
+                {
+                    "action": action,
+                    "direction": direction,
+                    "move_to": move_to,
+                    "duration_ms": duration_ms,
+                    "speech": None,
+                    "sound": "none",
+                },
+                {
+                    "action": "sit",
+                    "direction": "keep",
+                    "move_to": None,
+                    "duration_ms": 2500,
+                    "speech": speech,
+                    "sound": sound,
+                },
+            ]
+            speech = None
+            sound = "none"
 
     return {
         "action": action,
@@ -315,6 +398,12 @@ class PetBrain:
                 warning(f"PetBrain: AI returned non-JSON response: {(raw or '')[:120]}")
                 return None
             parsed["source"] = "command" if user_hint else "ai"
+            if not user_hint:
+                curr_act = str(self._state.get_state().get("current_activity", "")).lower()
+                if curr_act == "coding":
+                    parsed["sound"] = "none"
+                    if parsed.get("action") in ("run", "jump", "jump_up"):
+                        parsed["action"] = "sit"
             self._last_decision_ts = time.time()
             return self.dispatch_action(parsed)
         except Exception as e:
@@ -364,6 +453,16 @@ class PetBrain:
         ]
         if mem:
             lines.append(mem)
+
+        curr_act = str(st.get("current_activity", "")).lower()
+        is_coding = curr_act == "coding" or "trabajo" in pomo_info
+        if is_coding:
+            lines.append(
+                "CONTEXTO CRÍTICO: El usuario está PROGRAMANDO / CONCENTRADO. "
+                "Sé un compañero silencioso y pacífico. Elige 'sit' o 'idle2', con 'sound': 'none', "
+                "'speech': null, y SIN carreras ni saltos bruscos."
+            )
+
         if user_hint:
             lines.append(f"ORDEN DIRECTA DEL USUARIO: \"{user_hint}\" — ¡obedece esta orden con el movimiento/animación más acorde!")
         else:
@@ -388,13 +487,30 @@ class PetBrain:
             if not self._is_ai_ready():
                 continue
 
+            st = self._state.get_state()
+            curr_act = str(st.get("current_activity", "")).lower()
+            is_coding = curr_act == "coding"
+            try:
+                from integrations.pomodoro import _pomodoro_state
+                if _pomodoro_state.get("active") and _pomodoro_state.get("phase") == "work":
+                    is_coding = True
+            except Exception:
+                pass
+
+            # During active coding, extend autonomous interval to 3-4 minutes (180s - 240s) so pet doesn't bother the user
+            effective_interval = max(180.0, self._interval * 3) if is_coding else self._interval
+
             now = time.time()
             elapsed = now - self._last_decision_ts
             trigger = self._pending_trigger
 
             if trigger and elapsed >= 18:
                 self._pending_trigger = None
-                self.decide_now(trigger=trigger)
-            elif elapsed >= self._interval:
+                # If user is in coding mode, suppress unsolicited activity switches to avoid interruptions
+                if is_coding and trigger in ("activity.update", "activity.switch"):
+                    pass
+                else:
+                    self.decide_now(trigger=trigger)
+            elif elapsed >= effective_interval:
                 self._pending_trigger = None
                 self.decide_now(trigger="autonomous")

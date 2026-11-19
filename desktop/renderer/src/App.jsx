@@ -47,8 +47,8 @@ const BACKEND_CHAT = 'http://127.0.0.1:8000/ai/chat'
 // ── Animaciones periódicas según modo activo ─────────────
 const MODE_ANIMS = {
   coding:        [
-    { state: 'jump', duration: 1500 },
-    { state: 'run',  duration: 2000 },
+    { state: 'sit',   duration: 6000 },
+    { state: 'idle2', duration: 8000 },
   ],
   browsing:      [
     { state: 'sniffwalk', duration: 2000 },
@@ -75,13 +75,15 @@ const EVENT_SPEECH = {
   'activity.update': (data) => {
     const t = (data?.activity_type || '').toLowerCase()
     const map = {
-      coding:        ['A programar 💻', 'Modo código ✨', 'Escribiendo código 🚀'],
+      // Mientras programa no interrumpir con bocadillos espontáneos
+      coding:        null,
       browsing:      ['Navegando 🌐', 'Investigando 🔍'],
       reading:       ['Leyendo 📚', 'Modo lectura 🤓'],
       communication: ['En llamada 💬'],
       design:        ['Diseñando 🎨', 'Modo creativo 🎭'],
     }
-    return pick(map[t]) || null
+    const pool = map[t]
+    return pool ? pick(pool) : null
   },
   'activity.switch': () => null,
   'activity.idle': () => null,
@@ -166,6 +168,7 @@ export default function App() {
   const movingInFlightRef = useRef(false)
   const actionQueueRef = useRef([])
   const targetXRef = useRef(null)
+  const pendingSpeechRef = useRef(null)
 
   const [stepLevel, setStepLevel] = useState(0)
   const [showHearts, setShowHearts] = useState(false)
@@ -282,8 +285,47 @@ export default function App() {
     let pollInterval = null
     let lastPolledActivity = ''
 
+    const isWorkingActivity = (act) => {
+      if (!act) return false
+      const a = String(act).toLowerCase()
+      return a === 'coding' || a.includes('code') || a.includes('terminal')
+    }
+
+    const isPetMoving = () => {
+      const anim = ANIMS[stateRef.current]
+      return (
+        (anim && anim.speed > 0) ||
+        targetXRef.current !== null ||
+        jumpMotionRef.current.active ||
+        movingInFlightRef.current ||
+        pendingDxRef.current !== 0 ||
+        pendingDyRef.current !== 0
+      )
+    }
+
+    const flushPendingSpeechIfStationary = () => {
+      if (!pendingSpeechRef.current) return
+      if (isPetMoving()) return
+      const pending = pendingSpeechRef.current
+      pendingSpeechRef.current = null
+      if (pending.errorSnippet) activeErrorSnippetRef.current = pending.errorSnippet
+      showSpeech(pending.text, pending.duration)
+    }
+
     const showSpeech = (text, duration = 4000) => {
       if (!text) return
+
+      // REGLA CRÍTICA: No mostrar diálogos mientras la mascota está en movimiento
+      // Guardar el diálogo para cuando llegue a su destino y se quede quieta.
+      if (isPetMoving()) {
+        pendingSpeechRef.current = { text, duration, errorSnippet: activeErrorSnippetRef.current }
+        if (bubbleRef.current && bubbleRef.current.classList.contains('show')) {
+          bubbleRef.current.classList.remove('show', 'clickable')
+          if (api?.platform === 'linux') requestAnimationFrame(syncWindowShape)
+        }
+        return
+      }
+
       const el = bubbleRef.current
       if (!el) return
       el.textContent = text
@@ -383,11 +425,25 @@ export default function App() {
 
     const forceAnim = (state, duration, speech) => {
       const validState = ANIMS[state] ? state : 'idle'
+      const anim = ANIMS[validState]
       stateRef.current = validState
       stateTimer = duration
       frameAccum = 0
       frameRef.current = 0
-      if (speech !== undefined && speech !== null) showSpeech(speech, Math.max(3000, duration))
+
+      // Si empieza movimiento, ocultar la burbuja para que no viaje pegada a la mascota
+      if (anim && anim.speed > 0) {
+        if (bubbleRef.current && bubbleRef.current.classList.contains('show')) {
+          bubbleRef.current.classList.remove('show', 'clickable')
+          if (api?.platform === 'linux') requestAnimationFrame(syncWindowShape)
+        }
+      }
+
+      if (speech !== undefined && speech !== null) {
+        showSpeech(speech, Math.max(3000, duration))
+      } else if (anim && anim.speed === 0) {
+        flushPendingSpeechIfStationary()
+      }
     }
 
     const computeTargetX = (moveTo) => {
@@ -537,7 +593,7 @@ export default function App() {
               action: 'run',
               direction: 'right',
               duration_ms: 1600,
-              speech: '¡Voy por la pelota! 🎾',
+              speech: null,
               sound: 'none',
             },
             {
@@ -550,14 +606,14 @@ export default function App() {
               action: 'run',
               direction: 'left',
               duration_ms: 1600,
-              speech: '¡Te la traje de vuelta! 🎾✨',
+              speech: null,
               sound: 'none',
             },
             {
-              action: 'jump',
+              action: 'sit',
               direction: 'keep',
-              duration_ms: 1400,
-              speech: '¿Jugamos otra vez? 🐶',
+              duration_ms: 2200,
+              speech: '¡Te la traje de vuelta! ¿Jugamos otra vez? 🐶🎾',
               sound: 'ladrido',
               onExecute: () => setHasBall(false),
             },
@@ -596,34 +652,77 @@ export default function App() {
           ...step,
           move_to: null,
           duration_ms: step.duration_ms || 2500,
+          speech: step.speech || null,
         })
         chosenAction = 'walk'
+        step = { ...step, speech: null }
+      }
+
+      // Check if this step is a moving animation
+      let stepSpeech = step.speech || undefined
+      const animDef = ANIMS[chosenAction]
+      const willMove = (animDef && animDef.speed > 0) || targetX !== null
+      if (willMove && stepSpeech) {
+        pendingSpeechRef.current = { text: stepSpeech, duration: Math.max(3000, Number(step.duration_ms) || 2800) }
+        stepSpeech = null
       }
 
       const dur = Number(step.duration_ms) || 2800
-      forceAnim(chosenAction, dur, step.speech || undefined)
+      forceAnim(chosenAction, dur, stepSpeech)
 
-      if (step.sound && step.sound !== 'none') {
-        audioEngine.play(step.sound)
+      let soundToPlay = step.sound
+      if (isWorkingActivity(lastKnownActivity) && soundToPlay === 'ladrido' && !step.userDirect) {
+        soundToPlay = 'none'
+      }
+      if (soundToPlay && soundToPlay !== 'none') {
+        audioEngine.play(soundToPlay)
       }
     }
 
     const executeAiAction = (payload) => {
       if (!payload || typeof payload !== 'object') return
       actionQueueRef.current = []
-      const seq = Array.isArray(payload.sequence) ? payload.sequence : []
+      const seq = Array.isArray(payload.sequence) ? payload.sequence.map(s => ({ ...s })) : []
       if (seq.length > 0) {
-        // Carry top-level speech/sound into first step if first step doesn't override it
+        // Enforce: Never assign speech to a movement step!
+        const topSpeech = payload.speech || null
+        if (topSpeech) {
+          let stationaryStep = seq.find(s => {
+            const an = ANIMS[s.action]
+            return an && an.speed === 0 && !s.move_to && typeof s.target_x !== 'number'
+          })
+          if (!stationaryStep) {
+            seq.push({
+              action: 'sit',
+              duration_ms: 2500,
+              speech: topSpeech,
+              sound: 'none',
+            })
+          } else if (!stationaryStep.speech) {
+            stationaryStep.speech = topSpeech
+          }
+        }
+
+        const topSound = payload.sound && payload.sound !== 'none' ? payload.sound : 'none'
         const first = {
           ...seq[0],
-          speech: seq[0].speech || payload.speech || null,
-          sound: seq[0].sound && seq[0].sound !== 'none' ? seq[0].sound : (payload.sound || 'none'),
+          speech: seq[0].speech || null,
+          sound: seq[0].sound && seq[0].sound !== 'none' ? seq[0].sound : topSound,
           move_to: seq[0].move_to || payload.move_to || null,
         }
         actionQueueRef.current = seq.slice(1)
         runSingleStep(first)
       } else {
-        runSingleStep(payload)
+        const anim = ANIMS[payload.action]
+        const isMove = (anim && anim.speed > 0) || payload.move_to || typeof payload.target_x === 'number'
+        if (isMove && payload.speech) {
+          const moveStep = { ...payload, speech: null }
+          const sitStep = { action: 'sit', duration_ms: 2500, speech: payload.speech, sound: payload.sound || 'none' }
+          actionQueueRef.current = [sitStep]
+          runSingleStep(moveStep)
+        } else {
+          runSingleStep(payload)
+        }
       }
     }
 
@@ -730,7 +829,7 @@ export default function App() {
           return
         }
         // Handle audio events
-        _handleAudioEvent(audioEngine, msg)
+        _handleAudioEvent(audioEngine, msg, isWorkingActivity(lastKnownActivity))
 
         if (msg.type === 'event' && msg.data?.event) {
           const ev = msg.data.event
@@ -741,15 +840,25 @@ export default function App() {
 
           if (ev === 'activity.switch' && isTypeChange) {
             lastReactedType = currentType
-            const speech = EVENT_SPEECH['activity.update']?.(data)
-            const reaction = getReaction(ev, data)
-            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            const isWork = isWorkingActivity(currentType)
+            if (!isWork) {
+              const speech = EVENT_SPEECH['activity.update']?.(data)
+              const reaction = getReaction(ev, data)
+              if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            } else {
+              forceAnim('sit', 4000, null)
+            }
           }
           if (ev === 'activity.update' && isTypeChange) {
             lastReactedType = currentType
-            const reaction = getReaction(ev, data)
-            const speech = EVENT_SPEECH[ev]?.(data)
-            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            const isWork = isWorkingActivity(currentType)
+            if (!isWork) {
+              const reaction = getReaction(ev, data)
+              const speech = EVENT_SPEECH[ev]?.(data)
+              if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            } else {
+              forceAnim('sit', 4000, null)
+            }
           }
 
           if (ev === 'pet.action' && data) {
@@ -811,7 +920,8 @@ export default function App() {
                 action: 'run',
                 target_x: targetPetX,
                 duration_ms: 4500,
-                speech: '¡Voy por la pelota a toda velocidad! ⚡🎾',
+                speech: null,
+                sound: 'none',
               },
               {
                 action: 'sniff',
@@ -827,12 +937,13 @@ export default function App() {
                 action: 'run',
                 target_x: originX,
                 duration_ms: 4500,
-                speech: '¡Te la traje de vuelta! 🎾✨',
+                speech: null,
+                sound: 'none',
               },
               {
-                action: 'jump',
-                duration_ms: 1500,
-                speech: '¡Buen tiro! ¿Jugamos otra vez? 🐶🎾',
+                action: 'sit',
+                duration_ms: 2200,
+                speech: '¡Te la traje de vuelta! ¿Jugamos otra vez? 🐶🎾',
                 sound: 'ladrido',
                 onExecute: () => {
                   setHasBall(false)
@@ -867,11 +978,16 @@ export default function App() {
           lastKnownActivity = activity
           // Only trigger animation if IPC bridge hasn't already
           if (activity !== lastReactedType) {
-            const data = { activity_type: activity }
-            const speech = EVENT_SPEECH['activity.update']?.(data)
-            const reaction = getReaction('activity.update', data)
-            if (reaction) forceAnim(reaction.state, reaction.duration, speech)
             lastReactedType = activity
+            const isWork = isWorkingActivity(activity)
+            if (!isWork) {
+              const data = { activity_type: activity }
+              const speech = EVENT_SPEECH['activity.update']?.(data)
+              const reaction = getReaction('activity.update', data)
+              if (reaction) forceAnim(reaction.state, reaction.duration, speech)
+            } else {
+              forceAnim('sit', 4000, null)
+            }
           }
         }
       } catch {}
@@ -979,24 +1095,37 @@ export default function App() {
             runSingleStep(nextStep)
           } else {
             targetXRef.current = null
-            const next = pickDefault(stateRef.current)
+            const isWork = isWorkingActivity(lastKnownActivity)
+            let next
+            if (isWork) {
+              const workStates = ['sit', 'idle', 'idle2']
+              next = workStates[Math.floor(Math.random() * workStates.length)]
+            } else {
+              next = pickDefault(stateRef.current)
+            }
             const nextAnim = ANIMS[next]
             stateRef.current = next
-            const d = STATE_DURATIONS[next]
+            const d = isWork ? [6000, 16000] : STATE_DURATIONS[next]
             stateTimer = rand(d[0], d[1])
             frameAccum = 0
             frameRef.current = frameRef.current % nextAnim.frames
+            flushPendingSpeechIfStationary()
           }
         }
 
         modeAnimTimer -= dt
         if (modeAnimTimer <= 0 && lastReactedType && actionQueueRef.current.length === 0) {
+          const isWork = isWorkingActivity(lastKnownActivity)
           const pool = MODE_ANIMS[lastReactedType]
           if (pool && !gConfig.aiAutonomy) {
             const a = pool[Math.floor(Math.random() * pool.length)]
             forceAnim(a.state, a.duration, null)
           }
-          modeAnimTimer = 25000 + Math.random() * 30000
+          modeAnimTimer = isWork ? (180000 + Math.random() * 120000) : (25000 + Math.random() * 30000)
+        }
+
+        if (!isPetMoving()) {
+          flushPendingSpeechIfStationary()
         }
 
         // Autonomous AI thoughts & choreography are now orchestrated by backend PetBrain
@@ -1078,9 +1207,9 @@ export default function App() {
       if (key === ' ' || key === 'arrowup' || key === 'w') {
         e.preventDefault()
         if (e.shiftKey || key === 'arrowup' || key === 'w') {
-          runSingleStep({ action: 'step_up', speech: '¡Subo de escalón! 🪜', sound: 'ladrido', mood: 'playful' })
+          runSingleStep({ action: 'step_up', speech: '¡Subo de escalón! 🪜', sound: 'ladrido', mood: 'playful', userDirect: true })
         } else {
-          runSingleStep({ action: 'jump', speech: '¡Hop hop! 🐾', sound: 'ladrido', mood: 'playful' })
+          runSingleStep({ action: 'jump', speech: '¡Hop hop! 🐾', sound: 'ladrido', mood: 'playful', userDirect: true })
         }
         return
       }
@@ -1089,9 +1218,9 @@ export default function App() {
       if (key === 'arrowdown' || key === 's') {
         e.preventDefault()
         if (stepLevelRef.current > 1) {
-          runSingleStep({ action: 'step_down', speech: '¡Bajo de escalón! 🪜', sound: 'none', mood: 'calm' })
+          runSingleStep({ action: 'step_down', speech: '¡Bajo de escalón! 🪜', sound: 'none', mood: 'calm', userDirect: true })
         } else {
-          runSingleStep({ action: 'reset_step', speech: '¡De vuelta al piso! 🐾', sound: 'none', mood: 'calm' })
+          runSingleStep({ action: 'reset_step', speech: '¡De vuelta al piso! 🐾', sound: 'none', mood: 'calm', userDirect: true })
         }
         return
       }
@@ -1100,7 +1229,7 @@ export default function App() {
       if (key === 'arrowleft' || key === 'a') {
         e.preventDefault()
         dirRef.current = -1
-        forceAnim('walk', 2200, '¡Paseando por aquí! 🐾')
+        forceAnim('walk', 2200, null)
         return
       }
 
@@ -1108,21 +1237,21 @@ export default function App() {
       if (key === 'arrowright' || key === 'd') {
         e.preventDefault()
         dirRef.current = 1
-        forceAnim('walk', 2200, '¡Paseando por acá! 🐾')
+        forceAnim('walk', 2200, null)
         return
       }
 
       // 6. Tennis Ball Game: P, B, or '2'
       if (key === 'p' || key === 'b' || key === '2') {
         e.preventDefault()
-        runSingleStep({ action: 'fetch_ball', speech: '¡A por la pelota! 🎾', sound: 'ladrido', mood: 'playful' })
+        runSingleStep({ action: 'fetch_ball', speech: '¡A por la pelota! 🎾', sound: 'ladrido', mood: 'playful', userDirect: true })
         return
       }
 
       // 7. Feed snack: G, F, or '5'
       if (key === 'g' || key === 'f' || key === '5') {
         e.preventDefault()
-        runSingleStep({ action: 'feed_snack', speech: '¡Ñam ñam, gracias por la galleta! 🍪', sound: 'ladrido', mood: 'happy' })
+        runSingleStep({ action: 'feed_snack', speech: '¡Ñam ñam, gracias por la galleta! 🍪', sound: 'ladrido', mood: 'happy', userDirect: true })
         return
       }
 
@@ -1136,31 +1265,31 @@ export default function App() {
       // 9. Sleep / Rest: Z, or '6'
       if (key === 'z' || key === '6') {
         e.preventDefault()
-        runSingleStep({ action: 'idle2', duration_ms: 6000, speech: 'Zzz... siesta merecida 😴💤', sound: 'ronquido', mood: 'sleepy' })
+        runSingleStep({ action: 'idle2', duration_ms: 6000, speech: 'Zzz... siesta merecida 😴💤', sound: 'ronquido', mood: 'sleepy', userDirect: true })
         return
       }
 
       // 10. Sniff / Inspect: H, O
       if (key === 'h' || key === 'o') {
         e.preventDefault()
-        runSingleStep({ action: 'sniff', duration_ms: 2500, speech: '¡Sniff sniff! 🔍🐾', sound: 'none', mood: 'curious' })
+        runSingleStep({ action: 'sniff', duration_ms: 2500, speech: '¡Sniff sniff! 🔍🐾', sound: 'none', mood: 'curious', userDirect: true })
         return
       }
 
       // 11. Quick numbers: 1 = jump, 3 = step up, 4 = ground
       if (key === '1') {
         e.preventDefault()
-        runSingleStep({ action: 'jump', speech: '¡Hop hop! 🐾', sound: 'ladrido', mood: 'playful' })
+        runSingleStep({ action: 'jump', speech: '¡Hop hop! 🐾', sound: 'ladrido', mood: 'playful', userDirect: true })
         return
       }
       if (key === '3') {
         e.preventDefault()
-        runSingleStep({ action: 'step_up', speech: '¡Subo de escalón! 🪜', sound: 'ladrido', mood: 'playful' })
+        runSingleStep({ action: 'step_up', speech: '¡Subo de escalón! 🪜', sound: 'ladrido', mood: 'playful', userDirect: true })
         return
       }
       if (key === '4') {
         e.preventDefault()
-        runSingleStep({ action: 'reset_step', speech: '¡Al piso! 🐾', sound: 'none', mood: 'calm' })
+        runSingleStep({ action: 'reset_step', speech: '¡Al piso! 🐾', sound: 'none', mood: 'calm', userDirect: true })
         return
       }
 
@@ -1190,18 +1319,18 @@ export default function App() {
   }, [])
 
   // ── Audio event handler (inside useEffect closure) ───────
-  function _handleAudioEvent(engine, msg) {
+  function _handleAudioEvent(engine, msg, isWorking = false) {
     const type = msg.type
     const data = msg.data || {}
 
     switch (type) {
       case 'thought':
         const tType = data.thought?.type
-        if (tType === 'focus' || tType === 'encouragement') engine.play('ladrido')
+        if (!isWorking && (tType === 'focus' || tType === 'encouragement')) engine.play('ladrido')
         break
 
       case 'mood_change':
-        if (data.mood === 'excited') engine.play('ladrido')
+        if (!isWorking && data.mood === 'excited') engine.play('ladrido')
         break
 
       case 'event':
@@ -1432,11 +1561,7 @@ function getReaction(eventType, data) {
     case 'activity.switch':
     case 'activity.update':
       if (t === 'coding')
-        return pick([
-          { state: 'jump',  duration: 1500 },
-          { state: 'run',   duration: 2000 },
-          { state: 'walk',  duration: 2500 },
-        ])
+        return { state: 'sit', duration: 4000 }
       if (t === 'browsing')
         return pick([
           { state: 'sniffwalk', duration: 2000 },
