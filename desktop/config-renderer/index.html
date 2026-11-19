@@ -275,6 +275,16 @@ body {
     <div class="section-title">Comportamiento</div>
     <div class="toggle-row">
       <div>
+        <div class="toggle-title">🚀 Arrancar con el sistema</div>
+        <div class="toggle-desc">Iniciar Pet Asistente automáticamente al encender o iniciar sesión (Windows / Linux)</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoStart">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
         <div class="toggle-title">🧠 Control autónomo por IA</div>
         <div class="toggle-desc">La IA dirige los movimientos, coreografías, humor y comentarios de la mascota</div>
       </div>
@@ -335,6 +345,7 @@ const tokenField = document.getElementById('tokenField')
 const tokenInput = document.getElementById('deepseekToken')
 const clickupTokenInput = document.getElementById('clickupToken')
 const clickupStatusEl = document.getElementById('clickupStatus')
+const autoStartEl = document.getElementById('autoStart')
 const soundEnabledEl = document.getElementById('soundEnabled')
 const simulateActivityEl = document.getElementById('simulateActivity')
 const aiAutonomyEl = document.getElementById('aiAutonomy')
@@ -398,6 +409,16 @@ async function loadConfig() {
     soundEnabledEl.checked = !cfg.soundMuted
     simulateActivityEl.checked = !!cfg.simulateActivity
     aiAutonomyEl.checked = cfg.aiAutonomy !== false
+
+    let autoStartEnabled = false
+    try {
+      if (window.pet?.getAutoStart) {
+        autoStartEnabled = await window.pet.getAutoStart()
+      } else if (typeof cfg.autoStart === 'boolean') {
+        autoStartEnabled = cfg.autoStart
+      }
+    } catch {}
+    autoStartEl.checked = !!autoStartEnabled
   } else {
     applyModeSelection('antigravity')
   }
@@ -412,11 +433,13 @@ document.querySelectorAll('input[name="aiMode"]').forEach(el => {
 
 saveBtn.addEventListener('click', async () => {
   const clickupToken = clickupTokenInput.value.trim()
+  const autoStartVal = !!autoStartEl.checked
   const cfg = {
     assistantName: nameInput.value.trim() || 'Pet',
     aiMode: document.querySelector('input[name="aiMode"]:checked')?.value || 'antigravity',
     deepseekToken: tokenInput.value.trim(),
     clickupToken,
+    autoStart: autoStartVal,
     soundMuted: !soundEnabledEl.checked,
     simulateActivity: !!simulateActivityEl.checked,
     aiAutonomy: !!aiAutonomyEl.checked,
@@ -428,6 +451,7 @@ saveBtn.addEventListener('click', async () => {
 
   try {
     if (window.pet?.saveConfig) await window.pet.saveConfig(cfg)
+    if (window.pet?.setAutoStart) await window.pet.setAutoStart(autoStartVal).catch(() => {})
     if (window.pet?.markConfigured) await window.pet.markConfigured()
 
     await fetch(`${API}/config`, {

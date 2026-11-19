@@ -85,3 +85,9 @@ def get_ai_autonomy() -> bool:
 
 def set_ai_autonomy(enabled: bool) -> None:
     set_config("ai_autonomy", "true" if enabled else "false")
+
+def get_auto_start() -> bool:
+    return get_config("auto_start", "false").lower() == "true"
+
+def set_auto_start(enabled: bool) -> None:
+    set_config("auto_start", "true" if enabled else "false")

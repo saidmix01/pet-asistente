@@ -16,6 +16,16 @@ pet-asistente/
 └── package.json           ← Scripts del monorepo
 ```
 
+## Características
+
+- 🐕 **Mascota interactiva**: Compañero de escritorio siempre visible con animaciones, sonidos, paseos y juego con pelotita de tenis.
+- 🚀 **Inicio con el sistema (Windows y Linux)**: Opción de autoarranque configurable desde los Ajustes (⚙️ Configuración) o desde el menú de la bandeja (Tray / clic derecho).
+  - **Windows**: Se registra automáticamente en el Registro de Windows (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+  - **Linux**: Se integra bajo el estándar XDG Autostart (`~/.config/autostart/pet-asistente.desktop`).
+- 🤖 **IA Multimodal**: Soporte para Antigravity CLI (`agy`), Ollama local o DeepSeek API.
+- 📋 **Integración ClickUp & Tareas**: Detección de tareas asignadas, sincronización y menciones.
+- 📊 **Reportes & Pomodoro**: Seguimiento de actividad, descansos y resumen del día.
+
 ## Requisitos
 
 - **Node.js** 20+ y **npm**

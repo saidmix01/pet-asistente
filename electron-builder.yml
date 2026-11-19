@@ -25,10 +25,19 @@ files:
 # ── Windows ────────────────────────────────────────────────
 win:
   target:
-    - portable
     - nsis
+    - portable
   icon: assets/icon.png
+  signAndEditExecutable: false
   artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Pet Asistente
+  runAfterFinish: true
 
 # ── macOS ─────────────────────────────────────────────────
 mac:

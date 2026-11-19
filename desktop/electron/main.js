@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, globalShortcut, clipboard, session } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const { spawn, execSync } = require('child_process')
 const http = require('http')
 
@@ -144,11 +145,17 @@ function getDefaultConfig() {
     simulateActivity: false,
     aiAutonomy: true,
     firstLaunch: true,
+    autoStart: false,
   }
 }
 
 function getEffectiveConfig() {
-  return { ...getDefaultConfig(), ...(loadConfig() || {}) }
+  const loaded = loadConfig() || {}
+  return {
+    ...getDefaultConfig(),
+    ...loaded,
+    autoStart: isAutoStartEnabled(),
+  }
 }
 
 function broadcastConfig(config) {
@@ -159,6 +166,104 @@ function broadcastConfig(config) {
     }
   }
   refreshTrayMenu()
+}
+
+// ── Autostart (Windows & Linux) ─────────────────────────────
+function getLinuxAutostartPath() {
+  const configDir = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config')
+  return path.join(configDir, 'autostart', 'pet-asistente.desktop')
+}
+
+function isAutoStartEnabled() {
+  if (process.platform === 'win32') {
+    try {
+      const settings = app.getLoginItemSettings()
+      return Boolean(settings.openAtLogin)
+    } catch {
+      const cfg = loadConfig()
+      return Boolean(cfg?.autoStart)
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      const desktopFile = getLinuxAutostartPath()
+      return fs.existsSync(desktopFile)
+    } catch {
+      const cfg = loadConfig()
+      return Boolean(cfg?.autoStart)
+    }
+  } else if (process.platform === 'darwin') {
+    try {
+      return Boolean(app.getLoginItemSettings().openAtLogin)
+    } catch {
+      const cfg = loadConfig()
+      return Boolean(cfg?.autoStart)
+    }
+  }
+  const cfg = loadConfig()
+  return Boolean(cfg?.autoStart)
+}
+
+function setAutoStart(enable) {
+  const shouldEnable = Boolean(enable)
+  console.log(`[Pet] Setting autostart: ${shouldEnable} (platform: ${process.platform})`)
+
+  if (process.platform === 'win32') {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: shouldEnable,
+        path: process.execPath,
+        args: ['--autostart'],
+      })
+    } catch (err) {
+      console.error('[Pet] Error updating Windows login items:', err.message)
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      const autostartFile = getLinuxAutostartPath()
+      if (shouldEnable) {
+        const autostartDir = path.dirname(autostartFile)
+        if (!fs.existsSync(autostartDir)) {
+          fs.mkdirSync(autostartDir, { recursive: true })
+        }
+        const execTarget = process.env.APPIMAGE || process.execPath
+        const iconTarget = getAppIconPath() || 'pet-asistente'
+        const desktopContent = [
+          '[Desktop Entry]',
+          'Type=Application',
+          'Version=1.0',
+          'Name=Pet Asistente',
+          'Comment=Desktop pet assistant',
+          `Exec="${execTarget}" --autostart`,
+          `Icon=${iconTarget}`,
+          'Terminal=false',
+          'Categories=Utility;',
+          'X-GNOME-Autostart-enabled=true',
+          '',
+        ].join('\n')
+        fs.writeFileSync(autostartFile, desktopContent, 'utf-8')
+        try { fs.chmodSync(autostartFile, 0o755) } catch {}
+      } else {
+        if (fs.existsSync(autostartFile)) {
+          fs.unlinkSync(autostartFile)
+        }
+      }
+    } catch (err) {
+      console.error('[Pet] Error updating Linux autostart file:', err.message)
+    }
+  } else if (process.platform === 'darwin') {
+    try {
+      app.setLoginItemSettings({ openAtLogin: shouldEnable })
+    } catch (err) {
+      console.error('[Pet] Error updating macOS login items:', err.message)
+    }
+  }
+
+  const cfg = loadConfig() || getDefaultConfig()
+  cfg.autoStart = shouldEnable
+  saveConfig(cfg)
+  broadcastConfig(cfg)
+  refreshTrayMenu()
+  return isAutoStartEnabled()
 }
 
 // ── Backend lifecycle ──────────────────────────────────────
@@ -523,11 +628,17 @@ ipcMain.handle('pet:get-config', async () => {
 })
 
 ipcMain.handle('pet:save-config', async (event, config) => {
+  if (config && typeof config.autoStart === 'boolean') {
+    setAutoStart(config.autoStart)
+  }
   const merged = { ...getEffectiveConfig(), ...(config || {}) }
   saveConfig(merged)
   broadcastConfig(merged)
   return true
 })
+
+ipcMain.handle('pet:get-autostart', async () => isAutoStartEnabled())
+ipcMain.handle('pet:set-autostart', async (event, enabled) => setAutoStart(Boolean(enabled)))
 
 ipcMain.handle('pet:is-first-launch', async () => {
   const cfg = loadConfig()
@@ -1005,6 +1116,12 @@ function buildAppMenuTemplate() {
       checked: !!cfg.soundMuted,
       click: () => toggleSoundMute(),
     },
+    {
+      label: '🚀 Iniciar con el sistema',
+      type: 'checkbox',
+      checked: isAutoStartEnabled(),
+      click: (menuItem) => setAutoStart(menuItem.checked),
+    },
     { label: '⚙️ Configuración', click: () => openConfigWindow() },
     { type: 'separator' },
     {
@@ -1395,8 +1512,14 @@ app.whenReady().then(async () => {
       } catch {}
     }
 
-    // Check first launch — open config window separately
-    if (!cfg || cfg.firstLaunch !== false) {
+    // Sync autostart on startup if configured
+    if (cfg?.autoStart && !isAutoStartEnabled()) {
+      setAutoStart(true)
+    }
+
+    // Check first launch — open config window separately (unless started automatically with --autostart)
+    const isAutoStarted = process.argv.includes('--autostart')
+    if (!isAutoStarted && (!cfg || cfg.firstLaunch !== false)) {
       console.log('[Pet] First launch — opening config window...')
       openConfigWindow()
     }

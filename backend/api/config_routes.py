@@ -14,6 +14,7 @@ from services.config_store import (
     get_simulate_activity, set_simulate_activity,
     get_sound_muted, set_sound_muted,
     get_ai_autonomy, set_ai_autonomy,
+    get_auto_start, set_auto_start,
 )
 from services.pet_memory import (
     remember, forget, get_memories, search_memories, get_memory_summary,
@@ -36,6 +37,7 @@ class SaveConfigRequest(BaseModel):
     simulateActivity: bool = False
     soundMuted: bool = False
     aiAutonomy: bool = True
+    autoStart: bool = False
 
 
 @router.get("/config")
@@ -49,6 +51,7 @@ async def get_full_config():
         "simulateActivity": get_simulate_activity(),
         "soundMuted": get_sound_muted(),
         "aiAutonomy": get_ai_autonomy(),
+        "autoStart": get_auto_start(),
     }
 
 
@@ -60,6 +63,7 @@ async def save_full_config(req: SaveConfigRequest):
     set_simulate_activity(req.simulateActivity)
     set_sound_muted(req.soundMuted)
     set_ai_autonomy(req.aiAutonomy)
+    set_auto_start(req.autoStart)
     if req.deepseekToken:
         set_deepseek_token(req.deepseekToken)
     if req.clickupToken:

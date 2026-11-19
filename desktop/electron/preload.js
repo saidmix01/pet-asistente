@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('pet', {
   // ── Config ────────────────────────────────────────────
   getConfig: () => ipcRenderer.invoke('pet:get-config'),
   saveConfig: (config) => ipcRenderer.invoke('pet:save-config', config),
+  getAutoStart: () => ipcRenderer.invoke('pet:get-autostart'),
+  setAutoStart: (enabled) => ipcRenderer.invoke('pet:set-autostart', enabled),
   isFirstLaunch: () => ipcRenderer.invoke('pet:is-first-launch'),
   markConfigured: () => ipcRenderer.invoke('pet:mark-configured'),
   onConfigUpdated: (callback) => {

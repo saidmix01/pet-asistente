@@ -54,7 +54,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Pet Asistente"
+      "shortcutName": "Pet Asistente",
+      "runAfterFinish": true
     },
     "linux": {
       "target": [
