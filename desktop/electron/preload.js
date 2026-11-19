@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('pet', {
   launchBall: () => ipcRenderer.invoke('pet:launch-ball'),
   pickupBall: () => ipcRenderer.invoke('pet:pickup-ball'),
   focusWindow: () => ipcRenderer.invoke('pet:focus-window'),
+  playSound: (name) => ipcRenderer.invoke('pet:play-sound', name),
+  onPlaySound: (callback) => {
+    const handler = (_event, name) => callback(name)
+    ipcRenderer.on('pet:play-sound', handler)
+    return () => ipcRenderer.removeListener('pet:play-sound', handler)
+  },
 
   // ── Config ────────────────────────────────────────────
   getConfig: () => ipcRenderer.invoke('pet:get-config'),

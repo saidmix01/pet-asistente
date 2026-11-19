@@ -31,6 +31,9 @@ if (process.platform === 'linux') {
   }
 }
 
+// Ensure audio can always play without requiring user gesture in frameless windows
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
 let mainWindow = null
 let chatWindow = null
 let configWindow = null
@@ -142,6 +145,7 @@ function getDefaultConfig() {
     deepseekToken: '',
     clickupToken: '',
     soundMuted: false,
+    soundVolume: 0.8,
     simulateActivity: false,
     aiAutonomy: true,
     firstLaunch: true,
@@ -640,6 +644,16 @@ ipcMain.handle('pet:save-config', async (event, config) => {
 ipcMain.handle('pet:get-autostart', async () => isAutoStartEnabled())
 ipcMain.handle('pet:set-autostart', async (event, enabled) => setAutoStart(Boolean(enabled)))
 
+ipcMain.handle('pet:play-sound', async (_event, soundName) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send('pet:play-sound', soundName)
+      return true
+    } catch {}
+  }
+  return false
+})
+
 ipcMain.handle('pet:is-first-launch', async () => {
   const cfg = loadConfig()
   return cfg ? cfg.firstLaunch !== false : true
@@ -1115,6 +1129,22 @@ function buildAppMenuTemplate() {
       type: 'checkbox',
       checked: !!cfg.soundMuted,
       click: () => toggleSoundMute(),
+    },
+    {
+      label: '🔊 Probar ladrido',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('pet:play-sound', 'ladrido')
+        }
+      },
+    },
+    {
+      label: '🔔 Probar alerta',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('pet:play-sound', 'alerta')
+        }
+      },
     },
     {
       label: '🚀 Iniciar con el sistema',

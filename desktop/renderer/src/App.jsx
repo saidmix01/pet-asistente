@@ -639,12 +639,21 @@ export default function App() {
     const syncMute = (cfg) => {
       if (cfg?.soundMuted) audioEngine.mute()
       else audioEngine.unmute()
+      if (typeof cfg?.soundVolume === 'number') {
+        audioEngine.setVolume(cfg.soundVolume)
+      }
     }
     syncMute(gConfig)
     const unsubscribeConfig = api?.onConfigUpdated
       ? api.onConfigUpdated((cfg) => {
           gConfig = { ...gConfig, ...(cfg || {}) }
           syncMute(gConfig)
+        })
+      : null
+
+    const unsubscribePlaySound = api?.onPlaySound
+      ? api.onPlaySound((soundName) => {
+          audioEngine.forcePlay(soundName)
         })
       : null
 
@@ -1175,6 +1184,7 @@ export default function App() {
       if (pollInterval) clearInterval(pollInterval)
       if (healthInterval) clearInterval(healthInterval)
       if (unsubscribeConfig) unsubscribeConfig()
+      if (unsubscribePlaySound) unsubscribePlaySound()
       if (voiceRecorderRef.current) voiceRecorderRef.current.cancel()
     }
   }, [])

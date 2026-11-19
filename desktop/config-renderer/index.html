@@ -214,6 +214,24 @@ body {
 .btn:hover { filter: brightness(1.08); }
 .btn:active { transform: scale(0.99); }
 .btn:disabled { opacity: 0.5; cursor: default; }
+.btn-test {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+.btn-test:hover {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.16));
+}
+.btn-test:active { transform: scale(0.97); }
 .status { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 8px; min-height: 16px; }
 </style>
 </head>
@@ -303,6 +321,18 @@ body {
         <span class="slider"></span>
       </label>
     </div>
+    <div id="soundControls" style="margin-top: 10px; padding-left: 2px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <label for="soundVolume" style="font-size: 11px; font-weight: 600; color: #cbd5e1;">Volumen de efectos</label>
+        <span id="volumeValue" style="font-size: 11px; color: #a5b4fc; font-weight: 700;">85%</span>
+      </div>
+      <input type="range" id="soundVolume" min="0" max="100" value="85" style="width: 100%; accent-color: var(--accent); cursor: pointer;">
+      <div style="display: flex; gap: 8px; margin-top: 10px;">
+        <button type="button" class="btn-test" id="testBarkBtn">🐾 Probar Ladrido</button>
+        <button type="button" class="btn-test" id="testAlertBtn">🔔 Probar Alerta</button>
+        <button type="button" class="btn-test" id="testSnackBtn">🍪 Probar Snack</button>
+      </div>
+    </div>
     <div class="toggle-row">
       <div>
         <div class="toggle-title">🎭 Simular actividad si no se detecta ventana</div>
@@ -347,6 +377,12 @@ const clickupTokenInput = document.getElementById('clickupToken')
 const clickupStatusEl = document.getElementById('clickupStatus')
 const autoStartEl = document.getElementById('autoStart')
 const soundEnabledEl = document.getElementById('soundEnabled')
+const soundControlsEl = document.getElementById('soundControls')
+const soundVolumeEl = document.getElementById('soundVolume')
+const volumeValueEl = document.getElementById('volumeValue')
+const testBarkBtn = document.getElementById('testBarkBtn')
+const testAlertBtn = document.getElementById('testAlertBtn')
+const testSnackBtn = document.getElementById('testSnackBtn')
 const simulateActivityEl = document.getElementById('simulateActivity')
 const aiAutonomyEl = document.getElementById('aiAutonomy')
 const saveBtn = document.getElementById('saveBtn')
@@ -407,6 +443,10 @@ async function loadConfig() {
     if (cfg.deepseekToken) tokenInput.value = cfg.deepseekToken
     if (cfg.clickupToken) clickupTokenInput.value = cfg.clickupToken
     soundEnabledEl.checked = !cfg.soundMuted
+    const vol = typeof cfg.soundVolume === 'number' ? Math.round(cfg.soundVolume * 100) : 85
+    soundVolumeEl.value = vol
+    volumeValueEl.textContent = `${vol}%`
+    soundControlsEl.style.display = soundEnabledEl.checked ? 'block' : 'none'
     simulateActivityEl.checked = !!cfg.simulateActivity
     aiAutonomyEl.checked = cfg.aiAutonomy !== false
 
@@ -421,11 +461,81 @@ async function loadConfig() {
     autoStartEl.checked = !!autoStartEnabled
   } else {
     applyModeSelection('antigravity')
+    soundControlsEl.style.display = soundEnabledEl.checked ? 'block' : 'none'
   }
 
   checkAiProviders()
   checkClickUp()
 }
+
+soundEnabledEl.addEventListener('change', () => {
+  soundControlsEl.style.display = soundEnabledEl.checked ? 'block' : 'none'
+})
+
+soundVolumeEl.addEventListener('input', () => {
+  volumeValueEl.textContent = `${soundVolumeEl.value}%`
+})
+
+function triggerPlaySound(name) {
+  if (window.pet?.playSound) {
+    window.pet.playSound(name).catch(() => {})
+  }
+  // Also preview locally in the config window
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if (AudioCtx) {
+      const ctx = new AudioCtx()
+      const now = ctx.currentTime
+      const vol = (parseInt(soundVolumeEl.value, 10) / 100) || 0.85
+      if (name === 'ladrido') {
+        // Quick preview bark
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sawtooth'
+        osc.frequency.setValueAtTime(700, now)
+        osc.frequency.exponentialRampToValueAtTime(280, now + 0.16)
+        gain.gain.setValueAtTime(0.01, now)
+        gain.gain.linearRampToValueAtTime(vol * 0.9, now + 0.01)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(now)
+        osc.stop(now + 0.17)
+      } else if (name === 'alerta') {
+        // 3-note ascending preview chime
+        [523.25, 659.25, 783.99].forEach((f, i) => {
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(f, now + i * 0.1)
+          gain.gain.setValueAtTime(vol * 0.6, now + i * 0.1)
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3)
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          osc.start(now + i * 0.1)
+          osc.stop(now + i * 0.1 + 0.31)
+        })
+      } else {
+        // Snack crunch preview
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'triangle'
+        osc.frequency.setValueAtTime(500, now)
+        osc.frequency.exponentialRampToValueAtTime(900, now + 0.18)
+        gain.gain.setValueAtTime(vol * 0.7, now)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(now)
+        osc.stop(now + 0.2)
+      }
+    }
+  } catch {}
+}
+
+testBarkBtn.addEventListener('click', () => triggerPlaySound('ladrido'))
+testAlertBtn.addEventListener('click', () => triggerPlaySound('alerta'))
+testSnackBtn.addEventListener('click', () => triggerPlaySound('snack'))
 
 document.querySelectorAll('input[name="aiMode"]').forEach(el => {
   el.addEventListener('change', () => { if (el.checked) applyModeSelection(el.value) })
@@ -434,6 +544,7 @@ document.querySelectorAll('input[name="aiMode"]').forEach(el => {
 saveBtn.addEventListener('click', async () => {
   const clickupToken = clickupTokenInput.value.trim()
   const autoStartVal = !!autoStartEl.checked
+  const soundVolumeVal = (parseInt(soundVolumeEl.value, 10) / 100) || 0.85
   const cfg = {
     assistantName: nameInput.value.trim() || 'Pet',
     aiMode: document.querySelector('input[name="aiMode"]:checked')?.value || 'antigravity',
@@ -441,6 +552,7 @@ saveBtn.addEventListener('click', async () => {
     clickupToken,
     autoStart: autoStartVal,
     soundMuted: !soundEnabledEl.checked,
+    soundVolume: soundVolumeVal,
     simulateActivity: !!simulateActivityEl.checked,
     aiAutonomy: !!aiAutonomyEl.checked,
     firstLaunch: false,

@@ -80,6 +80,15 @@ def get_sound_muted() -> bool:
 def set_sound_muted(muted: bool) -> None:
     set_config("sound_muted", "true" if muted else "false")
 
+def get_sound_volume() -> float:
+    try:
+        return float(get_config("sound_volume", "0.85"))
+    except Exception:
+        return 0.85
+
+def set_sound_volume(vol: float) -> None:
+    set_config("sound_volume", str(vol))
+
 def get_ai_autonomy() -> bool:
     return get_config("ai_autonomy", "true").lower() == "true"
 
