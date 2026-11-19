@@ -54,6 +54,8 @@ def find_antigravity_cli() -> str | None:
     if os.name == "nt":
         local_app_data = os.environ.get("LOCALAPPDATA", "")
         candidates = [
+            os.path.join(local_app_data, "agy", "bin", "agy.exe"),
+            os.path.join(local_app_data, "agy", "bin", "agy.cmd"),
             os.path.join(local_app_data, "Antigravity", "bin", "agy.exe"),
             os.path.join(local_app_data, "Antigravity", "bin", "agy.cmd"),
             os.path.join(home, ".antigravity", "bin", "agy.exe"),
