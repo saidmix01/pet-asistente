@@ -24,48 +24,68 @@ def load_token() -> str | None:
     try:
         from services.config_store import get_clickup_token
         token = get_clickup_token()
-        if token:
-            return token
+        if token and str(token).strip():
+            return str(token).strip().replace("Bearer ", "").strip().strip('"').strip("'")
     except Exception:
         pass
 
     # Fallback to file
     for path in [TOKEN_PATH, CONFIG_PATH]:
         if os.path.exists(path):
-            if path.endswith(".txt"):
-                with open(path, encoding="utf-8") as f:
-                    token = f.read().strip()
-                if token:
-                    return token
-            elif path.endswith(".json"):
-                with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
-                token = data.get("token", "")
-                if token:
-                    return token
+            try:
+                if path.endswith(".txt"):
+                    with open(path, encoding="utf-8") as f:
+                        token = f.read().strip()
+                    if token:
+                        return token.replace("Bearer ", "").strip().strip('"').strip("'")
+                elif path.endswith(".json"):
+                    with open(path, encoding="utf-8") as f:
+                        data = json.load(f)
+                    token = data.get("token", "")
+                    if token and str(token).strip():
+                        return str(token).strip().replace("Bearer ", "").strip().strip('"').strip("'")
+            except Exception:
+                pass
     return None
 
 
 def save_token(token: str) -> None:
     """Save the ClickUp personal API token to SQLite + file backup."""
+    clean = (token or "").strip().replace("Bearer ", "").strip().strip('"').strip("'")
+    if not clean:
+        delete_token()
+        return
+
     # Save to SQLite config store
     try:
         from services.config_store import set_clickup_token
-        set_clickup_token(token.strip())
+        set_clickup_token(clean)
     except Exception:
         pass
     # Also save to file as backup
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(TOKEN_PATH, "w", encoding="utf-8") as f:
-        f.write(token.strip())
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+            f.write(clean)
+    except Exception:
+        pass
     info("ClickUp token saved")
 
 
 def delete_token() -> None:
     """Remove stored ClickUp token."""
+    try:
+        from services.config_store import set_clickup_token
+        set_clickup_token("")
+    except Exception:
+        pass
+
     for path in [TOKEN_PATH, CONFIG_PATH]:
-        if os.path.exists(path):
-            os.remove(path)
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
     info("ClickUp token deleted")
 
 

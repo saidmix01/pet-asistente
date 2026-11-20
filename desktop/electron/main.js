@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, globalShortcut, clipboard, session } = require('electron')
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, globalShortcut, clipboard, session, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
@@ -943,6 +943,12 @@ ipcMain.handle('pet:open-config', async () => {
   openConfigWindow()
 })
 
+ipcMain.handle('pet:open-external', async (_event, url) => {
+  if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+    shell.openExternal(url).catch(() => {})
+  }
+})
+
 // ── Companion Hub / Chat window ───────────────────────────
 function openChatWindow(initialTab = 'chat') {
   const tab = typeof initialTab === 'string' && initialTab ? initialTab : 'chat'
@@ -1533,8 +1539,19 @@ app.whenReady().then(async () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
         }, (res) => {
-          if (res.statusCode === 200) console.log('[Pet] ClickUp connected!')
-          else console.log(`[Pet] ClickUp connect failed: ${res.statusCode}`)
+          if (res.statusCode === 200) {
+            console.log('[Pet] ClickUp connected!')
+            const syncReq = http.request({
+              hostname: '127.0.0.1',
+              port: 8000,
+              path: '/integrations/clickup/sync',
+              method: 'POST',
+            })
+            syncReq.on('error', () => {})
+            syncReq.end()
+          } else {
+            console.log(`[Pet] ClickUp connect failed: ${res.statusCode}`)
+          }
         })
         req.on('error', () => {})
         req.write(postData)

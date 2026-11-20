@@ -68,13 +68,31 @@ async def save_full_config(req: SaveConfigRequest):
     set_sound_volume(req.soundVolume)
     set_ai_autonomy(req.aiAutonomy)
     set_auto_start(req.autoStart)
-    if req.deepseekToken:
-        set_deepseek_token(req.deepseekToken)
-    if req.clickupToken:
-        set_clickup_token(req.clickupToken)
-        # Also save to clickup_config for backward compat
+    if req.deepseekToken is not None:
+        set_deepseek_token(req.deepseekToken.strip())
+
+    if req.clickupToken and req.clickupToken.strip():
+        cu_tok = req.clickupToken.strip()
+        set_clickup_token(cu_tok)
         from integrations.clickup_config import save_token
-        save_token(req.clickupToken)
+        save_token(cu_tok)
+        import integrations.clickup_routes as cu_routes
+        if cu_routes.clickup_service is not None:
+            try:
+                cu_routes.clickup_service.connect(cu_tok)
+            except Exception:
+                pass
+    elif req.clickupToken == "":
+        set_clickup_token("")
+        from integrations.clickup_config import delete_token
+        delete_token()
+        import integrations.clickup_routes as cu_routes
+        if cu_routes.clickup_service is not None:
+            try:
+                cu_routes.clickup_service.disconnect()
+            except Exception:
+                pass
+
     return {"saved": True}
 
 

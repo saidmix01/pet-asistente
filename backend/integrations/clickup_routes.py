@@ -2,6 +2,7 @@
 ClickUp routes — API endpoints for ClickUp integration.
 """
 
+import urllib.error
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/integrations/clickup", tags=["clickup"])
 
 # Singleton service instance (injected by main.py)
 clickup_service: ClickUpService | None = None
+task_tracker = None
 
 
 # ── Request models ────────────────────────────────────────────────────
@@ -27,8 +29,15 @@ class ConnectRequest(BaseModel):
 async def get_status():
     """Check if ClickUp integration is configured and connected."""
     if clickup_service is None:
-        return {"connected": False, "error": "Service not initialized"}
-    return {"connected": clickup_service.is_connected()}
+        return {"configured": False, "connected": False, "error": "Service not initialized"}
+    configured = clickup_service.is_configured()
+    connected = clickup_service.is_connected()
+    return {
+        "configured": configured,
+        "connected": connected,
+        "user_id": clickup_service._user_id,
+        "username": getattr(clickup_service, "_username", None),
+    }
 
 
 @router.post("/connect")
@@ -38,13 +47,24 @@ async def connect(req: ConnectRequest):
         raise HTTPException(500, "Service not initialized")
     try:
         result = clickup_service.connect(req.token)
+        # Notify / restart task_tracker if running
+        if task_tracker is not None:
+            try:
+                task_tracker.restart()
+            except Exception as e:
+                from services.logger import warning
+                warning(f"TaskTracker restart after connect: {e}")
         return {"message": "Connected to ClickUp", **result}
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise HTTPException(401, "Token de ClickUp no autorizado o expirado (HTTP 401)")
+        raise HTTPException(e.code, f"ClickUp API HTTP {e.code}: {e.reason}")
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         from services.logger import error
         error(f"ClickUp connect failed: {type(e).__name__}: {e}")
-        raise HTTPException(500, f"Connection failed: {e}")
+        raise HTTPException(500, f"Error de conexión con ClickUp: {e}")
 
 
 @router.post("/disconnect")
@@ -53,6 +73,11 @@ async def disconnect():
     if clickup_service is None:
         raise HTTPException(500, "Service not initialized")
     clickup_service.disconnect()
+    if task_tracker is not None:
+        try:
+            task_tracker.stop()
+        except Exception:
+            pass
     return {"message": "Disconnected from ClickUp"}
 
 

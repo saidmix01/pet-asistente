@@ -196,6 +196,10 @@ def main() -> None:
     chat_routes_module.time_tracker = time_tracker
     chat_routes_module.pet_brain = pet_brain
 
+    # Inject into ClickUp routes
+    import integrations.clickup_routes as cu_routes_module
+    cu_routes_module.task_tracker = task_tracker
+
     # Inject into config routes
     import api.config_routes as config_routes_module
     config_routes_module.pet_brain = pet_brain

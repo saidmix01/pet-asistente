@@ -47,35 +47,48 @@ class TaskTracker:
     # ── Lifecycle ─────────────────────────────────────────────────────
 
     def start(self) -> None:
+        if self._running:
+            return
+
         token = load_token()
         if not token:
             warning("TaskTracker: no ClickUp token, skipping")
             return
 
-        self._client = ClickUpClient(token)
+        try:
+            self._client = ClickUpClient(token)
 
-        # Get user info
-        user = self._client.get_current_user()
-        self._user_id = str(user.get("id", ""))
+            # Get user info
+            user = self._client.get_current_user()
+            self._user_id = str(user.get("id", ""))
 
-        # Get teams
-        teams = self._client.get_teams()
-        if teams:
-            self._team_id = teams[0]["id"]
+            # Get teams
+            teams = self._client.get_teams()
+            if teams:
+                self._team_id = str(teams[0]["id"])
 
-        if not self._user_id or not self._team_id:
-            error("TaskTracker: could not get user/team info")
-            return
+            if not self._user_id or not self._team_id:
+                warning("TaskTracker: could not get user/team info yet")
+                return
 
-        self._running = True
-        import threading
-        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
-        self._thread.start()
-        info(f"TaskTracker started (user={self._user_id}, team={self._team_id})")
+            self._running = True
+            import threading
+            self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+            self._thread.start()
+            info(f"TaskTracker started (user={self._user_id}, team={self._team_id})")
+        except Exception as e:
+            warning(f"TaskTracker start deferred: {e}")
 
     def stop(self) -> None:
         self._running = False
+        self._client = None
         info("TaskTracker stopped")
+
+    def restart(self) -> None:
+        """Restart task tracker with latest token and teams."""
+        self.stop()
+        time.sleep(0.3)
+        self.start()
 
     # ── Polling loop ──────────────────────────────────────────────────
 

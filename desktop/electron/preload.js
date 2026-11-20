@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('pet', {
   getScreenSize: () => ipcRenderer.invoke('pet:get-screen-size'),
   openChat: (tab) => ipcRenderer.invoke('pet:open-chat', tab || 'chat'),
   openConfig: () => ipcRenderer.invoke('pet:open-config'),
+  openExternal: (url) => ipcRenderer.invoke('pet:open-external', url),
   showContextMenu: () => ipcRenderer.invoke('pet:show-context-menu'),
   getLastError: () => ipcRenderer.invoke('pet:get-last-error'),
   launchBall: () => ipcRenderer.invoke('pet:launch-ball'),

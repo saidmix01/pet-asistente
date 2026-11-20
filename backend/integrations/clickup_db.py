@@ -115,35 +115,79 @@ def upsert_lists(lists: list[dict], folder_id: str | None, space_id: str) -> Non
 
 def upsert_tasks(tasks: list[dict]) -> None:
     conn = get_connection()
+    import json
     for t in tasks:
-        import json
-        assignees = json.dumps([a.get("username", "") for a in t.get("assignees", [])])
-        tags = json.dumps([tag.get("name", "") for tag in t.get("tags", [])])
-        priority = t.get("priority", {})
-        priority_val = priority.get("priority") if priority else None
-        due = t.get("due_date")
-        project = t.get("project", {})
-        project_name = project.get("name", "") if project else ""
+        try:
+            task_id = str(t.get("id", "")).strip()
+            if not task_id:
+                continue
 
-        conn.execute(
-            """INSERT OR REPLACE INTO clickup_tasks
-               (id, name, status, description, assignees, tags, priority, due_date, list_id, project_name, url, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                t["id"],
-                t.get("name", ""),
-                t.get("status", {}).get("status", ""),
-                t.get("description", ""),
-                assignees,
-                tags,
-                priority_val,
-                due,
-                t.get("list", {}).get("id", ""),
-                project_name,
-                t.get("url", ""),
-                t.get("date_updated", ""),
-            ),
-        )
+            name = str(t.get("name") or "Sin nombre")
+
+            # Status can be dict {"status": "to do"} or string
+            st = t.get("status")
+            status_val = st.get("status", "") if isinstance(st, dict) else str(st or "")
+
+            # Assignees
+            raw_assignees = t.get("assignees", [])
+            assignee_names = []
+            if isinstance(raw_assignees, list):
+                for a in raw_assignees:
+                    if isinstance(a, dict):
+                        assignee_names.append(a.get("username") or a.get("email") or str(a.get("id", "")))
+                    elif isinstance(a, str):
+                        assignee_names.append(a)
+            assignees = json.dumps(assignee_names)
+
+            # Tags
+            raw_tags = t.get("tags", [])
+            tag_names = []
+            if isinstance(raw_tags, list):
+                for tag in raw_tags:
+                    if isinstance(tag, dict):
+                        tag_names.append(tag.get("name", ""))
+                    elif isinstance(tag, str):
+                        tag_names.append(tag)
+            tags = json.dumps(tag_names)
+
+            # Priority
+            priority = t.get("priority")
+            priority_val = None
+            if isinstance(priority, dict):
+                priority_val = priority.get("priority") or priority.get("id")
+            elif priority is not None:
+                priority_val = priority
+
+            due = t.get("due_date")
+            project = t.get("project")
+            project_name = project.get("name", "") if isinstance(project, dict) else ""
+
+            list_obj = t.get("list")
+            list_id = str(list_obj.get("id", "") if isinstance(list_obj, dict) else (list_obj or ""))
+            url = str(t.get("url") or f"https://app.clickup.com/t/{task_id}")
+            updated_at = str(t.get("date_updated") or "")
+
+            conn.execute(
+                """INSERT OR REPLACE INTO clickup_tasks
+                   (id, name, status, description, assignees, tags, priority, due_date, list_id, project_name, url, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    task_id,
+                    name,
+                    status_val,
+                    str(t.get("description") or ""),
+                    assignees,
+                    tags,
+                    priority_val,
+                    due,
+                    list_id,
+                    project_name,
+                    url,
+                    updated_at,
+                ),
+            )
+        except Exception as e:
+            error(f"Error upserting ClickUp task {t.get('id')}: {e}")
     conn.commit()
     conn.close()
 

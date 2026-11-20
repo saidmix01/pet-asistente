@@ -1193,22 +1193,29 @@ async function loadTasks() {
   try {
     const st = await (await fetch(`${API}/integrations/clickup/status`)).json()
     if (st.connected) {
-      badgeEl.textContent = 'conectado'
+      badgeEl.textContent = st.username ? `conectado (${st.username})` : 'conectado'
       badgeEl.className = 'badge ok'
+    } else if (st.configured) {
+      badgeEl.textContent = 'error auth'
+      badgeEl.className = 'badge err'
     } else {
       badgeEl.textContent = 'sin configurar'
       badgeEl.className = 'badge warn'
     }
 
-    const data = await (await fetch(`${API}/integrations/clickup/tasks?limit=25`)).json()
+    const data = await (await fetch(`${API}/integrations/clickup/tasks?limit=50`)).json()
     const tasks = data.tasks || []
     listEl.innerHTML = ''
     if (!tasks.length) {
       const empty = document.createElement('div')
       empty.className = 'empty-state'
-      empty.textContent = st.connected
-        ? 'No hay tareas sincronizadas todavía. Pulsa 🔄 Sync.'
-        : 'Conecta tu token de ClickUp en ⚙️ Ajustes para ver tus tareas aquí.'
+      if (st.connected) {
+        empty.innerHTML = 'No hay tareas sincronizadas todavía.<br><button class="btn secondary" style="margin-top:8px;" onclick="document.getElementById(\'cuSyncBtn\').click()">🔄 Sincronizar ahora</button>'
+      } else if (st.configured) {
+        empty.innerHTML = 'Error de autenticación con ClickUp.<br><small style="color:var(--text-muted)">Abre ⚙️ Ajustes y verifica o actualiza tu API token.</small>'
+      } else {
+        empty.innerHTML = 'Conecta tu token de ClickUp en ⚙️ Ajustes para sincronizar tus tareas.'
+      }
       listEl.appendChild(empty)
       return
     }
@@ -1216,6 +1223,14 @@ async function loadTasks() {
     for (const t of tasks) {
       const row = document.createElement('div')
       row.className = 'list-row'
+      if (t.url) {
+        row.style.cursor = 'pointer'
+        row.title = 'Abrir tarea en ClickUp'
+        row.addEventListener('click', (e) => {
+          if (window.pet?.openExternal) window.pet.openExternal(t.url)
+          else window.open(t.url, '_blank')
+        })
+      }
       const main = document.createElement('div')
       main.className = 'list-row-main'
       const title = document.createElement('div')
@@ -1241,7 +1256,7 @@ async function loadTasks() {
       listEl.appendChild(row)
     }
   } catch {
-    listEl.innerHTML = '<div class="empty-state">No se pudieron cargar las tareas.</div>'
+    listEl.innerHTML = '<div class="empty-state">No se pudieron cargar las tareas. Backend offline.</div>'
   }
 }
 
@@ -1249,13 +1264,15 @@ document.getElementById('cuSyncBtn').addEventListener('click', async () => {
   showToast('Sincronizando ClickUp...')
   try {
     const r = await fetch(`${API}/integrations/clickup/sync`, { method: 'POST' })
+    const d = await r.json().catch(() => ({}))
     if (r.ok) {
-      showToast('ClickUp sincronizado ✓')
+      const count = d.tasks_synced !== undefined ? d.tasks_synced : ''
+      showToast(`ClickUp sincronizado ✓${count !== '' ? ` (${count} tareas)` : ''}`)
       loadTasks()
     } else {
-      showToast('Configura tu token de ClickUp en Ajustes')
+      showToast(`Error: ${d.detail || 'Verifica tu token en Ajustes'}`)
     }
-  } catch { showToast('Error al sincronizar') }
+  } catch { showToast('Error de conexión al sincronizar') }
 })
 
 document.getElementById('addLogBtn').addEventListener('click', async () => {

@@ -27,38 +27,82 @@ class ClickUpService:
     def __init__(self) -> None:
         self._client: ClickUpClient | None = None
         self._user_id: str | None = None
+        self._username: str | None = None
 
     # ── Connection ────────────────────────────────────────────────────
 
-    def is_connected(self) -> bool:
+    def is_configured(self) -> bool:
+        """Return True if an API token is stored."""
         token = load_token()
-        return token is not None
+        return bool(token and token.strip())
+
+    def is_connected(self) -> bool:
+        """Check if the client is valid and connected to ClickUp API."""
+        if self._client is not None and self._user_id:
+            return True
+        token = load_token()
+        if not token:
+            return False
+        # Try lightweight verification
+        try:
+            client = ClickUpClient(token)
+            user = client.get_current_user()
+            self._client = client
+            self._user_id = str(user.get("id", ""))
+            self._username = user.get("username", "") or user.get("email", "")
+            return bool(self._user_id)
+        except Exception as e:
+            error(f"ClickUp verify failed: {e}")
+            return False
 
     def connect(self, token: str) -> dict:
         """Test connection and fetch user/team info."""
-        from integrations.clickup_config import save_token
-        save_token(token)
-        self._client = ClickUpClient(token)
+        clean_token = (token or "").strip().replace("Bearer ", "").strip().strip('"').strip("'")
+        if not clean_token:
+            raise ValueError("El token de ClickUp no puede estar vacío")
 
-        # Get authenticated user info
-        user = self._client.get_current_user()
-        self._user_id = user.get("id", "")
-        info(f"Authenticated as user_id={self._user_id}")
+        client = ClickUpClient(clean_token)
 
-        teams = self._client.get_teams()
+        # 1. Verify user
+        user = client.get_current_user()
+        user_id = str(user.get("id", ""))
+        username = user.get("username", "") or user.get("email", "")
+        if not user_id:
+            raise ValueError("No se pudo obtener el usuario asociado al token")
+
+        # 2. Verify teams / workspaces
+        teams = client.get_teams()
         if not teams:
-            raise ValueError("No teams found for this token")
-        info(f"Connected to ClickUp: {', '.join(t['name'] for t in teams)}")
+            raise ValueError("No se encontraron Workspaces (espacios de trabajo) para este token")
+
+        # Connection verified! Save credentials & state
+        from integrations.clickup_config import save_token
+        save_token(clean_token)
+        self._client = client
+        self._user_id = user_id
+        self._username = username
+
+        team_names = [t.get("name", "") for t in teams]
+        info(f"Connected to ClickUp as {username} (user_id={user_id}). Workspaces: {', '.join(team_names)}")
+
         return {
             "user_id": self._user_id,
-            "user": user.get("username", ""),
-            "teams": [{"id": t["id"], "name": t["name"]} for t in teams],
+            "user": self._username,
+            "teams": [{"id": str(t["id"]), "name": t.get("name", "")} for t in teams],
         }
 
     def disconnect(self) -> None:
+        """Remove stored token and reset client cache."""
         from integrations.clickup_config import delete_token
         delete_token()
         self._client = None
+        self._user_id = None
+        self._username = None
+        try:
+            clear_cache()
+        except Exception:
+            pass
+        info("ClickUp disconnected")
 
     # ── Client lazy loader ────────────────────────────────────────────
 
@@ -67,18 +111,17 @@ class ClickUpService:
             return self._client
         token = load_token()
         if not token:
-            raise RuntimeError("ClickUp not configured. Set your API token first.")
+            raise RuntimeError("ClickUp no está configurado. Introduce tu API token primero.")
         self._client = ClickUpClient(token)
         return self._client
 
     # ── Sync ──────────────────────────────────────────────────────────
 
-    def sync_all(self, days_back: int = 7) -> dict:
+    def sync_all(self, days_back: int = 30) -> dict:
         """
         Smart sync:
         - Structure: teams → spaces → folders → lists (one pass)
-        - Tasks: ONLY those assigned to the authenticated user, via team-level endpoint
-        - Much faster than iterating every list
+        - Tasks: fetches user tasks + team open tasks
         """
         import time
         client = self._ensure_client()
@@ -89,34 +132,32 @@ class ClickUpService:
         if not self._user_id:
             try:
                 user = client.get_current_user()
-                self._user_id = user.get("id", "")
-            except Exception:
-                pass
+                self._user_id = str(user.get("id", ""))
+                self._username = user.get("username", "") or user.get("email", "")
+            except Exception as e:
+                error(f"ClickUp could not get user profile: {e}")
 
         teams = client.get_teams()
         upsert_teams(teams)
-
-        from datetime import timedelta
-        date_updated_gt = int((datetime.now(timezone.utc) - timedelta(days=days_back)).timestamp() * 1000)
 
         start = time.time()
         total_tasks = 0
         total_lists = 0
 
         for team in teams:
-            tid = team["id"]
+            tid = str(team["id"])
 
             # ── Structure (spaces → folders → lists) ────────────────
             spaces = client.get_spaces(tid)
             upsert_spaces(spaces, tid)
 
             for space in spaces:
-                sid = space["id"]
+                sid = str(space["id"])
                 folders = client.get_folders(sid)
                 upsert_folders(folders, sid)
                 for folder in folders:
-                    folder_lists = client.get_lists(folder["id"])
-                    upsert_lists(folder_lists, folder["id"], sid)
+                    folder_lists = client.get_lists(str(folder["id"]))
+                    upsert_lists(folder_lists, str(folder["id"]), sid)
                     total_lists += len(folder_lists)
 
                 # Folderless lists
@@ -124,27 +165,63 @@ class ClickUpService:
                 upsert_lists(folderless, None, sid)
                 total_lists += len(folderless)
 
-            # ── Tasks assigned to me (team-level endpoint) ──────────
+            # ── Tasks ──────────────────────────────────────────────
+            fetched_tasks: list[dict] = []
+            seen_ids: set[str] = set()
+
+            # 1. Fetch tasks assigned to the user
             if self._user_id:
-                my_tasks = client.get_my_tasks(
-                    team_id=tid,
-                    assignee_id=self._user_id,
-                    date_updated_gt=date_updated_gt,
-                    subtasks=True,
-                    max_pages=10,
-                )
-                if my_tasks:
-                    upsert_tasks(my_tasks)
-                    total_tasks += len(my_tasks)
-                    info(f"  Synced {len(my_tasks)} tasks assigned to you")
+                try:
+                    my_tasks = client.get_team_tasks(
+                        team_id=tid,
+                        assignee_id=self._user_id,
+                        include_closed=True,
+                        subtasks=True,
+                        max_pages=5,
+                    )
+                    for t in my_tasks:
+                        tid_str = str(t.get("id", ""))
+                        if tid_str and tid_str not in seen_ids:
+                            seen_ids.add(tid_str)
+                            fetched_tasks.append(t)
+                    if my_tasks:
+                        info(f"  Synced {len(my_tasks)} tasks assigned to {self._username or self._user_id}")
+                except Exception as e:
+                    error(f"Error fetching user tasks: {e}")
+
+            # 2. If no tasks assigned or few tasks, also fetch open workspace tasks
+            if len(fetched_tasks) < 50:
+                try:
+                    team_tasks = client.get_team_tasks(
+                        team_id=tid,
+                        assignee_id=None,
+                        include_closed=False,
+                        subtasks=True,
+                        max_pages=3,
+                    )
+                    added = 0
+                    for t in team_tasks:
+                        tid_str = str(t.get("id", ""))
+                        if tid_str and tid_str not in seen_ids:
+                            seen_ids.add(tid_str)
+                            fetched_tasks.append(t)
+                            added += 1
+                    if added > 0:
+                        info(f"  Synced {added} workspace tasks without direct assignee filter")
+                except Exception as e:
+                    error(f"Error fetching team tasks: {e}")
+
+            if fetched_tasks:
+                upsert_tasks(fetched_tasks)
+                total_tasks += len(fetched_tasks)
 
         elapsed = round(time.time() - start, 2)
-        info(f"Sync complete: {total_lists} lists, {total_tasks} your tasks in {elapsed}s")
+        info(f"Sync complete: {total_lists} lists, {total_tasks} tasks in {elapsed}s")
         return {
             "teams": len(teams),
             "lists": total_lists,
             "tasks_synced": total_tasks,
-            "filtered_by_assignee": bool(self._user_id),
+            "user": self._username or self._user_id,
             "elapsed": elapsed,
         }
 

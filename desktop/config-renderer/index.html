@@ -214,6 +214,24 @@ body {
 .btn:hover { filter: brightness(1.08); }
 .btn:active { transform: scale(0.99); }
 .btn:disabled { opacity: 0.5; cursor: default; }
+.btn-secondary {
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.btn-secondary:hover {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.16));
+}
+.btn-secondary:active { transform: scale(0.97); }
+.btn-secondary:disabled { opacity: 0.5; cursor: default; }
 .btn-test {
   flex: 1;
   padding: 8px 10px;
@@ -352,8 +370,11 @@ body {
     </div>
     <div class="field">
       <label for="clickupToken">Token de API Personal</label>
-      <input type="password" id="clickupToken" placeholder="pk_...">
-      <span class="hint">Settings → Apps → API Token en app.clickup.com</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="password" id="clickupToken" placeholder="pk_..." style="flex:1;">
+        <button type="button" class="btn-secondary" id="btnTestClickup">🔌 Probar / Conectar</button>
+      </div>
+      <span class="hint" id="clickupHint">Settings → Apps → API Token en app.clickup.com</span>
     </div>
   </div>
 </div>
@@ -375,6 +396,8 @@ const tokenField = document.getElementById('tokenField')
 const tokenInput = document.getElementById('deepseekToken')
 const clickupTokenInput = document.getElementById('clickupToken')
 const clickupStatusEl = document.getElementById('clickupStatus')
+const btnTestClickup = document.getElementById('btnTestClickup')
+const clickupHintEl = document.getElementById('clickupHint')
 const autoStartEl = document.getElementById('autoStart')
 const soundEnabledEl = document.getElementById('soundEnabled')
 const soundControlsEl = document.getElementById('soundControls')
@@ -416,13 +439,87 @@ async function checkClickUp() {
   try {
     const r = await fetch(`${API}/integrations/clickup/status`)
     const d = await r.json()
-    clickupStatusEl.textContent = d.connected ? 'conectado ✓' : 'desconectado'
-    clickupStatusEl.className = `badge ${d.connected ? 'connected' : 'disconnected'}`
+    if (d.connected) {
+      clickupStatusEl.textContent = 'conectado ✓'
+      clickupStatusEl.className = 'badge connected'
+      if (d.username) {
+        clickupHintEl.textContent = `✓ Conectado como ${d.username}`
+        clickupHintEl.style.color = '#4ade80'
+      }
+    } else if (d.configured) {
+      clickupStatusEl.textContent = 'error token'
+      clickupStatusEl.className = 'badge disconnected'
+      clickupHintEl.textContent = '⚠️ Token guardado pero no validado o expirado'
+      clickupHintEl.style.color = '#fbbf24'
+    } else {
+      clickupStatusEl.textContent = 'desconectado'
+      clickupStatusEl.className = 'badge disconnected'
+      clickupHintEl.textContent = 'Settings → Apps → API Token en app.clickup.com'
+      clickupHintEl.style.color = '#94a3b8'
+    }
   } catch {
     clickupStatusEl.textContent = 'backend offline'
     clickupStatusEl.className = 'badge disconnected'
   }
 }
+
+async function testClickUpConnection(tokenToTest) {
+  const token = (tokenToTest !== undefined ? tokenToTest : clickupTokenInput.value).trim()
+  if (!token) {
+    clickupStatusEl.textContent = 'desconectado'
+    clickupStatusEl.className = 'badge disconnected'
+    clickupHintEl.textContent = 'Introduce un Token de ClickUp primero.'
+    clickupHintEl.style.color = '#f87171'
+    return { ok: false, message: 'Token vacío' }
+  }
+
+  btnTestClickup.disabled = true
+  btnTestClickup.textContent = 'Probando...'
+  clickupStatusEl.textContent = 'conectando...'
+  clickupStatusEl.className = 'badge disconnected'
+
+  try {
+    const res = await fetch(`${API}/integrations/clickup/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      clickupStatusEl.textContent = 'conectado ✓'
+      clickupStatusEl.className = 'badge connected'
+      const teamNames = (data.teams || []).map(x => x.name).filter(Boolean).join(', ')
+      clickupHintEl.textContent = `✓ Conectado como ${data.user || 'usuario'}${teamNames ? ` (${teamNames})` : ''}`
+      clickupHintEl.style.color = '#4ade80'
+      btnTestClickup.disabled = false
+      btnTestClickup.textContent = '✓ Conectado'
+      // Trigger background sync
+      fetch(`${API}/integrations/clickup/sync`, { method: 'POST' }).catch(() => {})
+      return { ok: true, data }
+    } else {
+      clickupStatusEl.textContent = 'error token'
+      clickupStatusEl.className = 'badge disconnected'
+      const errDetail = data.detail || 'Token no válido'
+      clickupHintEl.textContent = `❌ ${errDetail}`
+      clickupHintEl.style.color = '#f87171'
+      btnTestClickup.disabled = false
+      btnTestClickup.textContent = '🔌 Reintentar'
+      return { ok: false, message: errDetail }
+    }
+  } catch (err) {
+    clickupStatusEl.textContent = 'backend offline'
+    clickupStatusEl.className = 'badge disconnected'
+    clickupHintEl.textContent = '❌ Backend offline o error de red'
+    clickupHintEl.style.color = '#f87171'
+    btnTestClickup.disabled = false
+    btnTestClickup.textContent = '🔌 Probar / Conectar'
+    return { ok: false, message: 'Backend offline' }
+  }
+}
+
+btnTestClickup.addEventListener('click', () => {
+  testClickUpConnection()
+})
 
 async function loadConfig() {
   let cfg = null
@@ -562,46 +659,39 @@ saveBtn.addEventListener('click', async () => {
   statusEl.textContent = ''
 
   try {
+    // 1. If ClickUp token is entered, validate with ClickUp API first
+    if (clickupToken) {
+      const conn = await testClickUpConnection(clickupToken)
+      if (!conn.ok) {
+        statusEl.textContent = `❌ ClickUp: ${conn.message}`
+        statusEl.style.color = '#f87171'
+        saveBtn.disabled = false
+        saveBtn.textContent = '💾 Guardar cambios'
+        return // Keep open so user can correct the token
+      }
+    } else {
+      // Token was cleared by user
+      try {
+        await fetch(`${API}/integrations/clickup/disconnect`, { method: 'POST' })
+        clickupStatusEl.textContent = 'desconectado'
+        clickupStatusEl.className = 'badge disconnected'
+      } catch {}
+    }
+
+    // 2. Persist to Electron config & system autostart
     if (window.pet?.saveConfig) await window.pet.saveConfig(cfg)
     if (window.pet?.setAutoStart) await window.pet.setAutoStart(autoStartVal).catch(() => {})
     if (window.pet?.markConfigured) await window.pet.markConfigured()
 
+    // 3. Persist to backend
     await fetch(`${API}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cfg),
     }).catch(() => {})
 
-    if (clickupToken) {
-      try {
-        const statusR = await fetch(`${API}/integrations/clickup/status`)
-        const statusD = await statusR.json()
-        if (!statusD.connected) {
-          const r = await fetch(`${API}/integrations/clickup/connect`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: clickupToken }),
-          })
-          if (r.ok) {
-            clickupStatusEl.textContent = 'conectado ✓'
-            clickupStatusEl.className = 'badge connected'
-            fetch(`${API}/integrations/clickup/sync`, { method: 'POST' }).catch(() => {})
-          } else {
-            const err = await r.json().catch(() => ({}))
-            statusEl.textContent = `⚠️ ClickUp: ${err.detail || 'error de conexión'}`
-            statusEl.style.color = '#fbbf24'
-          }
-        }
-      } catch {
-        statusEl.textContent = '⚠️ No se pudo conectar a ClickUp'
-        statusEl.style.color = '#fbbf24'
-      }
-    }
-
-    if (!statusEl.textContent) {
-      statusEl.textContent = '✅ Cambios guardados'
-      statusEl.style.color = '#4ade80'
-    }
+    statusEl.textContent = '✅ Cambios guardados'
+    statusEl.style.color = '#4ade80'
     setTimeout(() => window.close(), 1200)
   } catch {
     statusEl.textContent = '❌ Error al guardar'
