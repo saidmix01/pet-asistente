@@ -3,6 +3,8 @@ ClickUp Service — high-level operations: sync, query, and report generation.
 """
 
 from datetime import datetime, timezone
+import re
+import urllib.error
 from typing import Any
 
 from integrations.clickup_client import ClickUpClient
@@ -241,6 +243,149 @@ class ClickUpService:
     def get_today_tasks(self) -> list[dict]:
         """Return tasks updated in the last 24 hours."""
         return get_cached_tasks(limit=200)
+
+    # ── Task Operations (Write) ───────────────────────────────────────
+
+    def find_task(self, query: str) -> dict | None:
+        """
+        Locate a task in ClickUp by name, ID, or context ('actual', 'en progreso').
+        """
+        q = (query or "").strip().strip('"\'«»').strip()
+        if not q:
+            return None
+
+        tasks = self.get_tasks(limit=100)
+        q_lower = q.lower()
+
+        # Contextual triggers: "actual", "en progreso", "esta tarea"
+        if q_lower in ("actual", "esta", "esta tarea", "en progreso", "haciendo", "current"):
+            for t in tasks:
+                st = (t.get("status") or "").lower()
+                if st in ("in progress", "doing", "in review", "en progreso"):
+                    return t
+            return tasks[0] if tasks else None
+
+        # 1. Exact ID match
+        for t in tasks:
+            if str(t.get("id", "")).lower() == q_lower:
+                return t
+
+        # 2. Exact Name match (case-insensitive)
+        for t in tasks:
+            if t.get("name", "").strip().lower() == q_lower:
+                return t
+
+        # 3. Substring in Name
+        for t in tasks:
+            if q_lower in t.get("name", "").lower():
+                return t
+
+        # 4. Word overlap scoring
+        q_words = set(re.findall(r"\w+", q_lower))
+        if q_words:
+            best_task = None
+            best_score = 0
+            for t in tasks:
+                t_words = set(re.findall(r"\w+", t.get("name", "").lower()))
+                common = q_words.intersection(t_words)
+                if len(common) > best_score:
+                    best_score = len(common)
+                    best_task = t
+            if best_score > 0:
+                return best_task
+
+        # 5. Fallback: direct API lookup if it looks like an ID
+        if len(q) >= 5 and " " not in q and self._client is not None:
+            try:
+                task = self._client.get_task(q)
+                if task and task.get("id"):
+                    return task
+            except Exception:
+                pass
+
+        return None
+
+    def post_comment(self, task_query: str, comment_text: str) -> dict:
+        """Post a comment to a task matched by query."""
+        client = self._ensure_client()
+        task = self.find_task(task_query)
+        if not task:
+            raise ValueError(f"No encontré ninguna tarea llamada o con ID '{task_query}'")
+
+        text = (comment_text or "").strip()
+        if not text:
+            raise ValueError("El comentario no puede estar vacío")
+
+        task_id = str(task["id"])
+        result = client.post_task_comment(task_id, text, notify_all=True)
+        info(f"Comment posted to task '{task.get('name')}' ({task_id}): {text[:50]}")
+        return {
+            "success": True,
+            "task_id": task_id,
+            "task_name": task.get("name", "Sin nombre"),
+            "comment": text,
+            "response": result,
+        }
+
+    def update_task_status(self, task_query: str, new_status: str) -> dict:
+        """Change the status of a task matched by query."""
+        client = self._ensure_client()
+        task = self.find_task(task_query)
+        if not task:
+            raise ValueError(f"No encontré ninguna tarea llamada o con ID '{task_query}'")
+
+        st_clean = (new_status or "").strip().lower()
+        if not st_clean:
+            raise ValueError("El estado no puede estar vacío")
+
+        # Candidate mapping for flexible user phrases
+        if st_clean in ("done", "completada", "completado", "terminada", "terminado", "finalizada", "finalizado", "lista", "listo", "closed", "cerrada"):
+            candidates = ["done", "complete", "completed", "closed", "terminado", "finalizado", "listo"]
+        elif st_clean in ("in progress", "en progreso", "haciendo", "progreso", "doing", "in review"):
+            candidates = ["in progress", "doing", "in review", "en progreso", "haciendo"]
+        elif st_clean in ("to do", "todo", "pendiente", "abierta", "open", "por hacer"):
+            candidates = ["to do", "open", "todo", "pendiente"]
+        else:
+            candidates = [st_clean, new_status.strip()]
+
+        task_id = str(task["id"])
+        applied_status = None
+        last_error = None
+
+        for cand in candidates:
+            try:
+                client.update_task(task_id, {"status": cand})
+                applied_status = cand
+                break
+            except urllib.error.HTTPError as e:
+                last_error = e
+                # 400 or 422 usually means status not found in list workflow
+                if e.code in (400, 422):
+                    continue
+                raise
+
+        if not applied_status:
+            if last_error:
+                raise last_error
+            raise ValueError(f"No se pudo cambiar el estado a '{new_status}' en ClickUp")
+
+        # Update local SQLite cache so UI reflects change instantly
+        try:
+            from db.database import get_connection
+            conn = get_connection()
+            conn.execute("UPDATE clickup_tasks SET status = ? WHERE id = ?", (applied_status, task_id))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        info(f"Task '{task.get('name')}' ({task_id}) status changed to '{applied_status}'")
+        return {
+            "success": True,
+            "task_id": task_id,
+            "task_name": task.get("name", "Sin nombre"),
+            "status": applied_status,
+        }
 
     # ── Report ────────────────────────────────────────────────────────
 

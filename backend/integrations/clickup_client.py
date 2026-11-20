@@ -214,6 +214,18 @@ class ClickUpClient:
         """Get comments for a specific task."""
         return self._request("GET", f"/task/{task_id}/comment") or []
 
+    def post_task_comment(self, task_id: str, comment_text: str, notify_all: bool = True) -> dict:
+        """Post a comment to a specific task."""
+        data = {
+            "comment_text": comment_text,
+            "notify_all": notify_all,
+        }
+        return self._request("POST", f"/task/{task_id}/comment", data=data)
+
+    def update_task(self, task_id: str, data: dict) -> dict:
+        """Update task properties such as status, name, description, etc."""
+        return self._request("PUT", f"/task/{task_id}", data=data)
+
     def get_time_entries(
         self,
         team_id: str,

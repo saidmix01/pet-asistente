@@ -119,6 +119,40 @@ async def get_tasks(list_id: str | None = None, status: str | None = None, limit
         raise HTTPException(500, str(e))
 
 
+class TaskCommentRequest(BaseModel):
+    comment: str
+
+
+@router.post("/tasks/{task_id}/comment")
+async def post_task_comment_endpoint(task_id: str, req: TaskCommentRequest):
+    """Post a comment to a ClickUp task."""
+    if clickup_service is None:
+        raise HTTPException(500, "Service not initialized")
+    try:
+        return clickup_service.post_comment(task_id, req.comment)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Error al publicar comentario: {e}")
+
+
+class TaskStatusRequest(BaseModel):
+    status: str
+
+
+@router.put("/tasks/{task_id}/status")
+async def update_task_status_endpoint(task_id: str, req: TaskStatusRequest):
+    """Change the status of a ClickUp task."""
+    if clickup_service is None:
+        raise HTTPException(500, "Service not initialized")
+    try:
+        return clickup_service.update_task_status(task_id, req.status)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Error al cambiar estado: {e}")
+
+
 @router.get("/report")
 async def generate_report():
     """Generate the end-of-day report crossing activity data with ClickUp tasks."""

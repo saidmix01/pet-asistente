@@ -3,6 +3,8 @@ Chat history routes — API for persistent chat history.
 """
 
 from datetime import date
+import json
+import re
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -36,11 +38,93 @@ class ChatResponse(BaseModel):
     history_id: int
 
 
+# ── ClickUp Action Detection ───────────────────────────────────────
+
+_CU_COMMENT_PATTERNS = [
+    re.compile(r'^(?:roy[,\s]+)?(?:por\s+favor\s+)?(?:comenta|comentar|escribe|escribir|deja|dejar|agrega|agregar)(?:\s+(?:un\s+)?comentario)?(?:\s+(?:en|a)\s+)(?:la\s+tarea\s+)?["\'«]?([^:"\'»\n]+)["\'»]?\s*[:]\s*(.+)$', re.IGNORECASE),
+    re.compile(r'^(?:roy[,\s]+)?(?:por\s+favor\s+)?(?:comenta|comentar)\s+(?:en\s+)(?:la\s+tarea\s+)?["\'«]?([^"\'»\n]+)["\'»]?\s+que\s+(.+)$', re.IGNORECASE),
+]
+
+_CU_STATUS_PATTERNS = [
+    re.compile(r'^(?:roy[,\s]+)?(?:por\s+favor\s+)?(?:marca|marcar)\s+(?:la\s+tarea\s+)?["\'«]?([^"\'»\n]+?)["\'»]?\s+como\s+([a-zA-ZáéíóúÁÉÍÓÚ\s]+)$', re.IGNORECASE),
+    re.compile(r'^(?:roy[,\s]+)?(?:por\s+favor\s+)?(?:cambia|cambiar|pasa|pasar|pon|poner)\s+(?:el\s+estado\s+de\s+)?(?:la\s+tarea\s+)?["\'«]?([^"\'»\n]+?)["\'»]?\s+(?:a|en)\s+([a-zA-ZáéíóúÁÉÍÓÚ\s]+)$', re.IGNORECASE),
+    re.compile(r'^(?:roy[,\s]+)?(?:por\s+favor\s+)?(?:completa|completar|termina|terminar)\s+(?:la\s+tarea\s+)?["\'«]?([^"\'»\n]+?)["\'»]?$', re.IGNORECASE),
+]
+
+
+def _handle_clickup_command(message: str) -> tuple[str | None, dict | None]:
+    """
+    Check if the user message is an explicit command to post a comment or change status on ClickUp.
+    Returns (response_text, pet_action) or (None, None).
+    """
+    msg = message.strip()
+
+    # 1. Check for comment command
+    for pat in _CU_COMMENT_PATTERNS:
+        m = pat.match(msg)
+        if m:
+            task_query = m.group(1).strip()
+            comment_text = m.group(2).strip()
+            import integrations.clickup_routes as cu_routes
+            svc = cu_routes.clickup_service
+            if svc is None or not svc.is_connected():
+                return ("⚠️ No tengo conexión activa con ClickUp para comentar en la tarea. Verifica tu token en ⚙️ Ajustes.", None)
+            try:
+                res = svc.post_comment(task_query, comment_text)
+                t_name = res.get("task_name", task_query)
+                return (
+                    f"🐾 ¡Listo! He publicado tu comentario en la tarea **\"{t_name}\"**:\n> *\"{comment_text}\"* ✅",
+                    {"action": "jump", "sound": "ladrido", "mood": "happy"},
+                )
+            except ValueError as e:
+                return (f"🐶 {e}", None)
+            except Exception as e:
+                return (f"🐶 Ocurrió un error al comentar en ClickUp: {e}", None)
+
+    # 2. Check for status update command
+    for pat in _CU_STATUS_PATTERNS:
+        m = pat.match(msg)
+        if m:
+            task_query = m.group(1).strip()
+            status_target = m.group(2).strip() if len(m.groups()) > 1 and m.group(2) else "done"
+            import integrations.clickup_routes as cu_routes
+            svc = cu_routes.clickup_service
+            if svc is None or not svc.is_connected():
+                return ("⚠️ No tengo conexión activa con ClickUp para cambiar el estado. Verifica tu token en ⚙️ Ajustes.", None)
+            try:
+                res = svc.update_task_status(task_query, status_target)
+                t_name = res.get("task_name", task_query)
+                applied = res.get("status", status_target)
+                return (
+                    f"🎉 ¡Excelente trabajo! He marcado la tarea **\"{t_name}\"** como **{applied.upper()}** en ClickUp 🐾",
+                    {"action": "fetch_ball", "sound": "ladrido", "mood": "playful"},
+                )
+            except ValueError as e:
+                return (f"🐶 {e}", None)
+            except Exception as e:
+                return (f"🐶 Ocurrió un error al actualizar el estado en ClickUp: {e}", None)
+
+    return None, None
+
+
 @router.post("/send")
 def chat_send(req: ChatRequest):
     """Send a message and get AI response. Saves both to history."""
     if not req.message.strip():
         raise HTTPException(400, "Mensaje vacío")
+
+    # 1. Fast path: Direct ClickUp action command
+    cu_response, cu_action = _handle_clickup_command(req.message)
+    if cu_response is not None:
+        save_message(req.session_id, "user", req.message)
+        save_message(req.session_id, "assistant", cu_response)
+        action_dispatched = None
+        if cu_action and pet_brain:
+            try:
+                action_dispatched = pet_brain.dispatch_action(cu_action)
+            except Exception:
+                pass
+        return {"response": cu_response, "action": action_dispatched}
 
     from services.ai import is_antigravity_available, is_ollama_available, is_deepseek_configured
     if req.mode == "antigravity" and not is_antigravity_available():
@@ -72,6 +156,11 @@ Contexto del día:
 {today_info}
 {memory_info}
 Respondé de forma concisa y amigable, en español (máximo 80 palabras).
+Capacidades especiales con ClickUp:
+Si el usuario te pide comentar en una tarea o cambiarle el estado a una tarea, incluye al final de tu respuesta:
+[CLICKUP: {{"action": "comment", "task": "<nombre_o_id>", "comment": "<texto>"}}]
+o
+[CLICKUP: {{"action": "status", "task": "<nombre_o_id>", "status": "<done|in progress|to do>"}}]
 Si el usuario te pide una orden física (ej: salta, sube un escalón, baja al suelo, trepa a mi ventana, busca la pelota, come un snack, ven, siéntate, duérmete, muévete, olfatea, camina) o celebras con él, puedes incluir al final de tu respuesta una etiqueta con la acción física que realizarás:
 - Para saltar y quedar sobre un escalón/plataforma elevada: usa "action": "jump_up" (o "jump")
 - Para descender un escalón: usa "action": "jump_down"
@@ -93,6 +182,24 @@ Si el usuario te pide una orden física (ej: salta, sube un escalón, baja al su
         action_dispatched = None
         if result and result.get("message", {}).get("content"):
             raw_text = result["message"]["content"].replace("</think>", "").replace("<think>", "").strip()
+
+            # Execute [CLICKUP: ...] tag if produced by AI
+            clickup_match = re.search(r'\[CLICKUP:\s*({[^}]+})\]', raw_text)
+            if clickup_match:
+                raw_text = re.sub(r'\[CLICKUP:\s*{[^}]+}\]', '', raw_text).strip()
+                try:
+                    cu_data = json.loads(clickup_match.group(1))
+                    import integrations.clickup_routes as cu_routes
+                    svc = cu_routes.clickup_service
+                    if svc and svc.is_connected():
+                        if cu_data.get("action") == "comment":
+                            svc.post_comment(cu_data.get("task", ""), cu_data.get("comment", ""))
+                        elif cu_data.get("action") == "status":
+                            svc.update_task_status(cu_data.get("task", ""), cu_data.get("status", "done"))
+                except Exception as cu_err:
+                    from services.logger import error
+                    error(f"Error executing AI ClickUp action: {cu_err}")
+
             from core.pet_brain import extract_chat_action
             clean_text, action = extract_chat_action(raw_text)
             response = clean_text[:500] if clean_text else "🐾"
